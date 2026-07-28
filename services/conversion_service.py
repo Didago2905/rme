@@ -2,20 +2,26 @@ from pathlib import Path
 
 from core.models.process_result import ProcessResult
 
-from modules.analyzer.analyzer import Analyzer
+from modules.conversion.conversion_job_builder import (
+    ConversionJobBuilder,
+)
 from modules.converter.converter import Converter
-from modules.planner.planner import Planner
-from modules.validator.validator import Validator
-
+from modules.media.media_service import MediaService
+from modules.planning.conversion_planner import (
+    ConversionPlanner,
+)
+from modules.validation.validation_service import (
+    ValidationService,
+)
 from services.logger_service import LoggerService
 
 
 class ConversionService:
-
     def __init__(self):
-        self.analyzer = Analyzer()
-        self.validator = Validator()
-        self.planner = Planner()
+        self.media_service = MediaService()
+        self.validation_service = ValidationService()
+        self.conversion_planner = ConversionPlanner()
+        self.conversion_job_builder = ConversionJobBuilder()
         self.converter = Converter()
         self.logger = LoggerService()
 
@@ -24,35 +30,40 @@ class ConversionService:
         output_path: Path,
     ) -> bool:
 
-        analysis = self.analyzer.analyze(
-            output_path
-        )
+        media = self.media_service.get_media(output_path)
 
-        report = self.validator.validate(
-            analysis.media_file
-        )
+        validation = self.validation_service.validate(media)
 
-        return report.is_compatible
+        return validation.is_valid
 
     def process_file(
         self,
         file_path: Path,
     ) -> ProcessResult:
 
-        self.logger.info(
-            f"Processing file: {file_path.name}"
+        self.logger.info(f"Processing file: {file_path.name}")
+
+        media = self.media_service.get_media(file_path)
+
+        validation = self.validation_service.validate(media)
+
+        plan = self.conversion_planner.plan(
+            media,
+            validation,
         )
 
-        analysis = self.analyzer.analyze(
-            file_path
-        )
+        if plan.compatible:
+            self.logger.info(f"Already compatible: {file_path.name}")
 
-        report = self.validator.validate(
-            analysis.media_file
-        )
+            return ProcessResult(
+                success=True,
+                skipped=True,
+                input_path=file_path,
+            )
 
-        job = self.planner.create_plan(
-            report
+        job = self.conversion_job_builder.build(
+            media,
+            plan,
         )
 
         output_file = self.converter.build_output_file(
@@ -61,20 +72,10 @@ class ConversionService:
         )
 
         if output_file.exists:
+            self.logger.info(f"Output already exists: {output_file.output_path}")
 
-            self.logger.info(
-                f"Output already exists: "
-                f"{output_file.output_path}"
-            )
-
-            if self._is_output_valid(
-                output_file.output_path
-            ):
-
-                self.logger.info(
-                    f"Output already valid: "
-                    f"{output_file.output_path}"
-                )
+            if self._is_output_valid(output_file.output_path):
+                self.logger.info(f"Output already valid: {output_file.output_path}")
 
                 print()
                 print("OUTPUT ALREADY VALID")
@@ -87,18 +88,13 @@ class ConversionService:
                     output_path=output_file.output_path,
                 )
 
-            self.logger.info(
-                f"Output requires rebuild: "
-                f"{output_file.output_path}"
-            )
+            self.logger.info(f"Output requires rebuild: {output_file.output_path}")
 
             print()
             print("OUTPUT EXISTS BUT IS NOT VALID")
             print(output_file.output_path)
 
-        self.logger.info(
-            f"Conversion job created: {job}"
-        )
+        self.logger.info(f"Conversion job created: {job}")
 
         return_code = self.converter.execute(
             file_path,
@@ -106,10 +102,7 @@ class ConversionService:
         )
 
         if return_code == 0:
-
-            self.logger.info(
-                f"Conversion completed: {file_path.name}"
-            )
+            self.logger.info(f"Conversion completed: {file_path.name}")
 
             return ProcessResult(
                 success=True,
@@ -118,9 +111,7 @@ class ConversionService:
                 output_path=output_file.output_path,
             )
 
-        self.logger.error(
-            f"Conversion failed: {file_path.name}"
-        )
+        self.logger.error(f"Conversion failed: {file_path.name}")
 
         return ProcessResult(
             success=False,

@@ -1,6 +1,6 @@
 from core.models.media_file import MediaFile
 
-from modules.conversion.conversion_job import (
+from core.models.conversion_job import (
     ConversionJob,
 )
 
@@ -33,20 +33,8 @@ class ConversionJobBuilder:
 
         return ConversionJob(
             target_container="mp4",
-
             convert_video=plan.convert_video,
-
-            target_video_codec=(
-                "h264"
-                if plan.convert_video
-                else None
-            ),
-
+            target_video_codec=("h264" if plan.convert_video else None),
             convert_audio=plan.convert_audio,
-
-            target_audio_codec=(
-                "aac"
-                if plan.convert_audio
-                else None
-            ),
+            target_audio_codec=("aac" if plan.convert_audio else None),
         )
