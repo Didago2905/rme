@@ -16,6 +16,8 @@ from core.models.subtitle_track import (
     SubtitleTrack,
 )
 
+from core.utils.video_level import normalize_video_level
+
 
 class MediaBuilder:
 
@@ -34,9 +36,7 @@ class MediaBuilder:
 
         for stream in data["streams"]:
 
-            codec_type = stream.get(
-                "codec_type"
-            )
+            codec_type = stream.get("codec_type")
 
             if codec_type == "video":
 
@@ -82,11 +82,14 @@ class MediaBuilder:
                             "profile",
                             "",
                         ),
-                        level=str(
-                            stream.get(
-                                "level",
+                        level=normalize_video_level(
+                            codec=stream.get(
+                                "codec_name",
                                 "",
-                            )
+                            ),
+                            raw_level=stream.get(
+                                "level",
+                            ),
                         ),
                         scan_type=stream.get(
                             "field_order",
@@ -97,10 +100,7 @@ class MediaBuilder:
 
             elif codec_type == "audio":
 
-                tags = stream.get(
-                    "tags",
-                    {}
-                )
+                tags = stream.get("tags", {})
 
                 audio_tracks.append(
                     AudioTrack(
@@ -125,10 +125,7 @@ class MediaBuilder:
 
             elif codec_type == "subtitle":
 
-                tags = stream.get(
-                    "tags",
-                    {}
-                )
+                tags = stream.get("tags", {})
 
                 subtitle_tracks.append(
                     SubtitleTrack(

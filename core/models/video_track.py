@@ -15,6 +15,6 @@ class VideoTrack:
 
     profile: str
 
-    level: str
+    level: float | None
 
     scan_type: str

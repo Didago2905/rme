@@ -225,7 +225,14 @@ class MediaInspectorWidget(QWidget):
 
         video = media.video_tracks[0]
 
+        audio = (
+            media.audio_tracks[0]
+            if media.audio_tracks
+            else None
+        )
+
         analysis_text = (
+            "[ VIDEO ]\n"
             f"Codec: {video.codec}\n"
             f"Resolution: {video.width}x{video.height}\n"
             f"FPS: {video.frame_rate}\n"
@@ -234,6 +241,18 @@ class MediaInspectorWidget(QWidget):
             f"Level: {video.level}\n"
             f"Scan: {video.scan_type}"
         )
+
+        if audio is not None:
+            analysis_text += (
+                "\n\n"
+                "[ AUDIO ]\n"
+                f"Codec: {audio.codec}\n"
+                f"Channels: {audio.channels}\n"
+                f"Language: {audio.language or '-'}\n"
+                f"Title: {audio.title or '-'}"
+            )
+
+        self.analysis_value.setText(analysis_text)
 
         self.analysis_value.setText(analysis_text)
 
