@@ -1,8 +1,8 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QHBoxLayout,
     QLabel,
     QSizePolicy,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -19,25 +19,23 @@ class HeaderWidget(QWidget):
         )
 
     def _build_ui(self) -> None:
-        """
-        Construye el contenido del encabezado.
-        """
-
-        layout = QVBoxLayout(self)
-
-        layout.setContentsMargins(0, 20, 0, 20)
-        layout.setSpacing(8)
-        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 4, 0, 4)
+        layout.setSpacing(12)
 
         title = QLabel("R.I.T.M.O. Media Engine")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
-        subtitle = QLabel("Media Processing Suite")
-        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        version = QLabel("v1.0")
+        version.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
-        version = QLabel("Version 0.1")
-        version.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.active_library = QLabel("No library selected")
+        self.active_library.setAlignment(Qt.AlignmentFlag.AlignRight)
 
         layout.addWidget(title)
-        layout.addWidget(subtitle)
         layout.addWidget(version)
+        layout.addStretch()
+        layout.addWidget(self.active_library)
+
+    def set_active_library(self, library_name: str) -> None:
+        self.active_library.setText(library_name or "No library selected")

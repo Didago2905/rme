@@ -37,4 +37,7 @@ class ConversionJobBuilder:
             target_video_codec=("h264" if plan.convert_video else None),
             convert_audio=plan.convert_audio,
             target_audio_codec=("aac" if plan.convert_audio else None),
+            include_video=True,
+            include_audio=True,
+            include_subtitles=False,
         )

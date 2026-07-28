@@ -11,9 +11,10 @@ class Converter:
         self,
         file_path: Path,
         job: ConversionJob,
+        output_path: Path | None = None,
     ) -> list[str]:
-
-        output_file = OUTPUT_DIR / f"{file_path.stem}.{job.target_container}"
+        if output_path is None:
+            output_path = OUTPUT_DIR / f"{file_path.stem}.{job.target_container}"
 
         command = [
             "ffmpeg",
@@ -21,44 +22,76 @@ class Converter:
             str(file_path),
         ]
 
-        command.extend(
-            [
-                "-map",
-                "0",
-            ]
-        )
-
-        if job.convert_video:
+        if job.include_video:
             command.extend(
                 [
-                    "-c:v",
-                    job.target_video_codec,
-                ]
-            )
-        else:
-            command.extend(
-                [
-                    "-c:v",
-                    "copy",
+                    "-map",
+                    "0:v",
                 ]
             )
 
-        if job.convert_audio:
+            if job.convert_video:
+                command.extend(
+                    [
+                        "-c:v",
+                        job.target_video_codec,
+                    ]
+                )
+            else:
+                command.extend(
+                    [
+                        "-c:v",
+                        "copy",
+                    ]
+                )
+
+        if job.include_audio:
             command.extend(
                 [
-                    "-c:a",
-                    job.target_audio_codec,
-                ]
-            )
-        else:
-            command.extend(
-                [
-                    "-c:a",
-                    "copy",
+                    "-map",
+                    "0:a",
                 ]
             )
 
-        command.append(str(output_file))
+            if job.convert_audio:
+                command.extend(
+                    [
+                        "-c:a",
+                        job.target_audio_codec,
+                    ]
+                )
+            else:
+                command.extend(
+                    [
+                        "-c:a",
+                        "copy",
+                    ]
+                )
+
+        if job.include_subtitles:
+            command.extend(
+                [
+                    "-map",
+                    "0:s",
+                ]
+            )
+
+            if job.convert_subtitles:
+                command.extend(
+                    [
+                        "-c:s",
+                        job.target_subtitle_codec,
+                    ]
+                )
+            else:
+                command.extend(
+                    [
+                        "-c:s",
+                        "copy",
+                    ]
+                )
+
+        command.append(str(output_path))
 
         return command
 
@@ -66,9 +99,10 @@ class Converter:
         self,
         file_path: Path,
         job: ConversionJob,
+        output_path: Path | None = None,
     ) -> OutputFile:
-
-        output_path = OUTPUT_DIR / f"{file_path.stem}.{job.target_container}"
+        if output_path is None:
+            output_path = OUTPUT_DIR / f"{file_path.stem}.{job.target_container}"
 
         return OutputFile(
             source_path=file_path,
@@ -81,11 +115,15 @@ class Converter:
         self,
         file_path: Path,
         job: ConversionJob,
+        output_path: Path | None = None,
     ) -> int:
+        if output_path is not None:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
 
         command = self.build_command(
             file_path,
             job,
+            output_path,
         )
 
         print()

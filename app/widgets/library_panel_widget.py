@@ -17,6 +17,7 @@ from app.themes.buttons import apply_primary_button
 class LibraryPanelWidget(QWidget):
     scan_requested = Signal(str)
     import_series_requested = Signal(str)
+    media_library_changed = Signal(str)
 
     def __init__(self) -> None:
         super().__init__()
@@ -30,12 +31,7 @@ class LibraryPanelWidget(QWidget):
         )
 
     def _build_ui(self) -> None:
-        """
-        Construye el panel de biblioteca.
-        """
-
         main_layout = QVBoxLayout(self)
-
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(12)
 
@@ -43,10 +39,6 @@ class LibraryPanelWidget(QWidget):
         self._build_content(main_layout)
 
     def _build_header(self, layout: QVBoxLayout) -> None:
-        """
-        Construye el encabezado del panel.
-        """
-
         title = QLabel("Library")
         title.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
@@ -58,14 +50,10 @@ class LibraryPanelWidget(QWidget):
         layout.addWidget(separator)
 
     def _build_content(self, layout: QVBoxLayout) -> None:
-        """
-        Construye el contenido del panel.
-        """
-
-        folder_label = QLabel("Folder")
+        folder_label = QLabel("Source Folder")
 
         self.folder_path = QLineEdit()
-        self.folder_path.setPlaceholderText("Select a media library...")
+        self.folder_path.setPlaceholderText("Select a media library or series...")
         self.folder_path.setReadOnly(True)
 
         browse_button = QPushButton("Browse...")
@@ -75,6 +63,23 @@ class LibraryPanelWidget(QWidget):
         folder_layout = QHBoxLayout()
         folder_layout.addWidget(self.folder_path)
         folder_layout.addWidget(browse_button)
+
+        destination_label = QLabel("Streaming Media Root")
+        self.media_library_path = QLineEdit()
+        self.media_library_path.setPlaceholderText(
+            "Select the Streaming App media root..."
+        )
+        self.media_library_path.setReadOnly(True)
+
+        destination_button = QPushButton("Browse...")
+        destination_button.setToolTip(
+            "Select the Streaming App media root, for example D:\\Media."
+        )
+        destination_button.clicked.connect(self._select_media_library)
+
+        destination_layout = QHBoxLayout()
+        destination_layout.addWidget(self.media_library_path)
+        destination_layout.addWidget(destination_button)
 
         self.scan_button = QPushButton("Scan Library")
         apply_primary_button(self.scan_button)
@@ -88,62 +93,48 @@ class LibraryPanelWidget(QWidget):
 
         layout.addWidget(folder_label)
         layout.addLayout(folder_layout)
+        layout.addWidget(destination_label)
+        layout.addLayout(destination_layout)
         layout.addWidget(self.scan_button)
         layout.addWidget(self.import_series_button)
 
-    def _select_folder(self) -> None:
-        """
-        Abre el selector de carpetas y actualiza la ruta seleccionada.
-        """
+    def set_media_library_path(self, path: str) -> None:
+        self.media_library_path.setText(path)
 
-        folder = QFileDialog.getExistingDirectory(
-            self,
-            "Select Folder",
-        )
+    def selected_media_library_path(self) -> str:
+        return self.media_library_path.text().strip()
+
+    def _select_folder(self) -> None:
+        folder = QFileDialog.getExistingDirectory(self, "Select Folder")
 
         if folder:
             self.folder_path.setText(folder)
 
         self._update_action_buttons_state()
 
-    def _selected_path(self) -> str:
-        """
-        Devuelve la ruta actualmente seleccionada.
-        """
+    def _select_media_library(self) -> None:
+        folder = QFileDialog.getExistingDirectory(self, "Select Streaming Media Root")
 
+        if folder:
+            self.media_library_path.setText(folder)
+            self.media_library_changed.emit(folder)
+
+    def _selected_path(self) -> str:
         return self.folder_path.text().strip()
 
     def _update_action_buttons_state(self) -> None:
-        """
-        Actualiza el estado de los botones de acción.
-        """
-
         has_folder = bool(self._selected_path())
-
         self.scan_button.setEnabled(has_folder)
         self.import_series_button.setEnabled(has_folder)
 
     def _scan_library(self) -> None:
-        """
-        Inicia el proceso de escaneo de la biblioteca.
-        """
-
         library_path = self._selected_path()
 
-        if not library_path:
-            return
-
-        self.scan_requested.emit(library_path)
+        if library_path:
+            self.scan_requested.emit(library_path)
 
     def _import_series(self) -> None:
-        """
-        Inicia el proceso de importación de una serie.
-        """
-        print("LibraryPanelWidget -> Import button pressed")
-
         series_path = self._selected_path()
 
-        if not series_path:
-            return
-
-        self.import_series_requested.emit(series_path)
+        if series_path:
+            self.import_series_requested.emit(series_path)

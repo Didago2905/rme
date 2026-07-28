@@ -1,4 +1,5 @@
 from pathlib import Path
+from shutil import copy2
 
 from core.models.process_result import ProcessResult
 
@@ -39,6 +40,7 @@ class ConversionService:
     def process_file(
         self,
         file_path: Path,
+        output_path: Path | None = None,
     ) -> ProcessResult:
 
         self.logger.info(f"Processing file: {file_path.name}")
@@ -55,10 +57,17 @@ class ConversionService:
         if plan.compatible:
             self.logger.info(f"Already compatible: {file_path.name}")
 
+            if output_path is not None and output_path != file_path:
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+
+                if not output_path.exists() or not self._is_output_valid(output_path):
+                    copy2(file_path, output_path)
+
             return ProcessResult(
                 success=True,
                 skipped=True,
                 input_path=file_path,
+                output_path=output_path,
             )
 
         job = self.conversion_job_builder.build(
@@ -69,6 +78,7 @@ class ConversionService:
         output_file = self.converter.build_output_file(
             file_path,
             job,
+            output_path,
         )
 
         if output_file.exists:
@@ -99,9 +109,23 @@ class ConversionService:
         return_code = self.converter.execute(
             file_path,
             job,
+            output_file.output_path,
         )
 
         if return_code == 0:
+            if not self._is_output_valid(output_file.output_path):
+                self.logger.error(
+                    f"Output validation failed: {output_file.output_path.name}"
+                )
+
+                return ProcessResult(
+                    success=False,
+                    skipped=False,
+                    input_path=file_path,
+                    output_path=output_file.output_path,
+                    error="Converted output failed WebSafe validation.",
+                )
+
             self.logger.info(f"Conversion completed: {file_path.name}")
 
             return ProcessResult(
