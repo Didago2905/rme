@@ -1,11 +1,11 @@
 from dataclasses import dataclass
 
-from core.models.media_file import MediaFile
+from core.models.media_item import MediaItem
 
 
 @dataclass(slots=True)
 class AnalysisResult:
-    media_file: MediaFile
+    media_item: MediaItem
 
     success: bool = False
 

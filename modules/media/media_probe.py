@@ -5,6 +5,18 @@ from pathlib import Path
 
 class MediaProbe:
 
+    def _subprocess_kwargs(self) -> dict:
+        if subprocess.os.name != "nt":
+            return {}
+
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
+        return {
+            "startupinfo": startupinfo,
+            "creationflags": subprocess.CREATE_NO_WINDOW,
+        }
+
     def probe(
         self,
         media_path: Path,
@@ -24,6 +36,7 @@ class MediaProbe:
             capture_output=True,
             text=True,
             encoding="utf-8",
+            **self._subprocess_kwargs(),
         )
 
         if result.returncode != 0:

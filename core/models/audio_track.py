@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from core.models.media_language import MediaLanguage
+
 
 @dataclass(slots=True)
 class AudioTrack:
@@ -7,6 +9,10 @@ class AudioTrack:
 
     channels: int
 
-    language: str
+    bitrate: int
 
-    title: str
+    language: MediaLanguage
+
+    default: bool
+
+    forced: bool

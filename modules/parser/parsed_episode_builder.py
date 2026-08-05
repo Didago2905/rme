@@ -1,7 +1,3 @@
-from core.models.episode_info import (
-    EpisodeInfo,
-)
-
 from core.models.media_item import (
     MediaItem,
 )
@@ -25,23 +21,16 @@ class ParsedEpisodeBuilder:
 
     def build(
         self,
-        episode: EpisodeInfo,
+        media_item: MediaItem,
     ) -> ParsedEpisode | None:
 
         match = self._parser.parse(
-            episode.file_name
+            media_item.file_name
         )
 
         if match is None:
 
             return None
-
-        media_item = (
-            MediaItem(
-                file_name=episode.file_name,
-                path=episode.path,
-            )
-        )
 
         return ParsedEpisode(
             media_item=media_item,

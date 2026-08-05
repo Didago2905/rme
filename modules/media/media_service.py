@@ -1,41 +1,21 @@
 from pathlib import Path
 
-from core.models.media_file import (
-    MediaFile,
-)
+from core.models.media_item import MediaItem
 
-from modules.media.media_probe import (
-    MediaProbe,
-)
-
-from modules.media.media_builder import (
-    MediaBuilder,
-)
+from modules.analyzer.analyzer import Analyzer
 
 
 class MediaService:
 
     def __init__(self):
 
-        self._probe = (
-            MediaProbe()
-        )
-
-        self._builder = (
-            MediaBuilder()
-        )
+        self._analyzer = Analyzer()
 
     def get_media(
         self,
         media_path: Path,
-    ) -> MediaFile:
+    ) -> MediaItem:
 
-        raw_media = self._probe.probe(
+        return self._analyzer.analyze(
             media_path
-        )
-
-        media = self._builder.build(
-            raw_media
-        )
-
-        return media
+        ).media_item

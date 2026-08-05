@@ -9,12 +9,16 @@ class VideoTrack:
 
     height: int
 
-    frame_rate: str
+    bitrate: int
 
-    pixel_format: str
+    fps: float
 
     profile: str
 
     level: float | None
 
-    scan_type: str
+    pixel_format: str
+
+    color_space: str
+
+    field_order: str

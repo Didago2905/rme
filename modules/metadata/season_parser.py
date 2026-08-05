@@ -4,12 +4,16 @@ from core.models.parsed_episode import (
     ParsedEpisode,
 )
 
-from modules.scanner.library_scanner import (
-    LibraryScanner,
+from modules.analyzer.analyzer import (
+    Analyzer,
 )
 
 from modules.parser.parsed_episode_builder import (
     ParsedEpisodeBuilder,
+)
+
+from modules.scanner.library_scanner import (
+    LibraryScanner,
 )
 
 
@@ -21,6 +25,8 @@ class SeasonParser:
 
         self._builder = ParsedEpisodeBuilder()
 
+        self._analyzer = Analyzer()
+
     def parse(
         self,
         season_path: Path,
@@ -28,15 +34,19 @@ class SeasonParser:
 
         parsed_episodes = []
 
-        episodes = self._scanner.scan_episodes(
+        episode_infos = self._scanner.scan_episodes(
             season_path
         )
 
-        for episode in episodes:
+        for episode_info in episode_infos:
+
+            analysis_result = self._analyzer.analyze(
+                episode_info.path
+            )
 
             parsed_episode = (
                 self._builder.build(
-                    episode
+                    analysis_result.media_item
                 )
             )
 

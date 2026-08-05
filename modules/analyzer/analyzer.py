@@ -2,10 +2,11 @@ from pathlib import Path
 
 from core.models.analysis_result import AnalysisResult
 from core.models.audio_track import AudioTrack
-from core.models.media_file import MediaFile
+from core.models.media_item import MediaItem
+from core.models.subtitle_track import SubtitleTrack
 from core.models.video_track import VideoTrack
 from services.ffmpeg_service import FFmpegService
-from core.models.subtitle_track import SubtitleTrack
+from core.models.media_language import MediaLanguage
 
 
 class Analyzer:
@@ -15,13 +16,9 @@ class Analyzer:
     def analyze(self, file_path: Path) -> AnalysisResult:
         media_info = self.ffmpeg.get_media_info(file_path)
 
-        media_file = MediaFile(
-            path=file_path,
-            file_name=file_path.name,
-            container=file_path.suffix.lower().lstrip("."),
-            size_bytes=file_path.stat().st_size,
-            duration_seconds=float(media_info.get("format", {}).get("duration", 0.0)),
-        )
+        video_tracks = []
+        audio_tracks = []
+        subtitle_tracks = []
 
         for stream in media_info.get("streams", []):
             stream_type = stream.get("codec_type")
@@ -34,46 +31,78 @@ class Analyzer:
                 try:
                     numerator, denominator = fps_string.split("/")
                     fps = float(numerator) / float(denominator)
-                except Exception:
+                except (ValueError, ZeroDivisionError):
                     pass
 
-                media_file.video_tracks.append(
+                raw_level = stream.get("level")
+
+                level = None
+                if raw_level is not None:
+                    try:
+                        level = float(raw_level) / 10
+                    except (TypeError, ValueError):
+                        level = None
+
+                video_tracks.append(
                     VideoTrack(
                         codec=stream.get("codec_name", ""),
                         width=stream.get("width", 0),
                         height=stream.get("height", 0),
                         bitrate=int(
-                            stream.get("bit_rate", stream.get("tags", {}).get("BPS", 0))
+                            stream.get(
+                                "bit_rate",
+                                stream.get("tags", {}).get("BPS", 0),
+                            )
                         ),
                         fps=fps,
                         profile=stream.get("profile", ""),
+                        level=level,
                         pixel_format=stream.get("pix_fmt", ""),
                         color_space=stream.get("color_space", ""),
+                        field_order=stream.get("field_order", ""),
                     )
                 )
 
             elif stream_type == "audio":
                 disposition = stream.get("disposition", {})
 
-                media_file.audio_tracks.append(
+                audio_tracks.append(
                     AudioTrack(
                         codec=stream.get("codec_name", ""),
-                        language=stream.get("tags", {}).get("language", ""),
+                        language=MediaLanguage(
+                            code=stream.get("tags", {}).get("language", ""),
+                        ),
                         channels=stream.get("channels", 0),
                         bitrate=int(stream.get("bit_rate", 0)),
                         default=bool(disposition.get("default", 0)),
                         forced=bool(disposition.get("forced", 0)),
                     )
                 )
+
             elif stream_type == "subtitle":
-                media_file.subtitle_tracks.append(
+                subtitle_tracks.append(
                     SubtitleTrack(
                         codec=stream.get("codec_name", ""),
-                        language=stream.get("tags", {}).get("language", ""),
+                        language=MediaLanguage(
+                            code=stream.get("tags", {}).get("language", ""),
+                        ),
                     )
                 )
+
+        media_item = MediaItem(
+            file_name=file_path.name,
+            path=file_path,
+            container=file_path.suffix.lower().lstrip("."),
+            duration_seconds=float(media_info.get("format", {}).get("duration", 0.0)),
+            size_bytes=file_path.stat().st_size,
+            bitrate=int(media_info.get("format", {}).get("bit_rate", 0)),
+            video_tracks=video_tracks,
+            audio_tracks=audio_tracks,
+            subtitle_tracks=subtitle_tracks,
+        )
+
         return AnalysisResult(
-            media_file=media_file,
+            media_item=media_item,
             success=True,
             analyzer="ffprobe",
         )

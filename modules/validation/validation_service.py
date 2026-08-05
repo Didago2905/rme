@@ -1,4 +1,4 @@
-from core.models.media_file import MediaFile
+from core.models.media_item import MediaItem
 from core.specifications.websafe import WEBSAFE_SPEC
 
 from modules.validation.validation_result import (
@@ -8,13 +8,13 @@ from modules.validation.validation_result import (
 
 class ValidationService:
     """
-    Evalúa un MediaFile contra la especificación
+    Evalúa un MediaItem contra la especificación
     WebSafe de RME.
     """
 
     def validate(
         self,
-        media: MediaFile,
+        media: MediaItem,
     ) -> ValidationResult:
         """
         Valida un archivo multimedia contra la
@@ -69,7 +69,7 @@ class ValidationService:
 
     def _validate_video_tracks(
         self,
-        media: MediaFile,
+        media: MediaItem,
         result: ValidationResult,
     ) -> None:
         """
@@ -83,7 +83,7 @@ class ValidationService:
 
     def _validate_audio_tracks(
         self,
-        media: MediaFile,
+        media: MediaItem,
         result: ValidationResult,
     ) -> None:
         """
@@ -97,7 +97,7 @@ class ValidationService:
 
     def _validate_container(
         self,
-        media: MediaFile,
+        media: MediaItem,
         result: ValidationResult,
     ) -> None:
         """
@@ -105,17 +105,23 @@ class ValidationService:
         especificación WebSafe.
         """
 
-        if media.container.lower() != WEBSAFE_SPEC["container"]:
+        allowed_containers = {
+            container.strip().lower()
+            for container in WEBSAFE_SPEC["container"].split(",")
+        }
+
+        if media.container.lower() not in allowed_containers:
             result.errors.append(
                 (
-                    "Container must be MP4 "
+                    "Container must be one of "
+                    f"{WEBSAFE_SPEC['container']} "
                     f"(found '{media.container}')."
                 )
             )
 
     def _validate_video_codec(
         self,
-        media: MediaFile,
+        media: MediaItem,
         result: ValidationResult,
     ) -> None:
         """
@@ -142,7 +148,7 @@ class ValidationService:
 
     def _validate_pixel_format(
         self,
-        media: MediaFile,
+        media: MediaItem,
         result: ValidationResult,
     ) -> None:
         """
@@ -169,7 +175,7 @@ class ValidationService:
 
     def _validate_profile(
         self,
-        media: MediaFile,
+        media: MediaItem,
         result: ValidationResult,
     ) -> None:
         """
@@ -196,7 +202,7 @@ class ValidationService:
 
     def _validate_level(
         self,
-        media: MediaFile,
+        media: MediaItem,
         result: ValidationResult,
     ) -> None:
         """
@@ -223,7 +229,7 @@ class ValidationService:
 
     def _validate_audio_codec(
         self,
-        media: MediaFile,
+        media: MediaItem,
         result: ValidationResult,
     ) -> None:
         """

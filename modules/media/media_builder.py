@@ -1,5 +1,3 @@
-import json
-
 from core.models.media_file import (
     MediaFile,
 )
@@ -39,22 +37,6 @@ class MediaBuilder:
             codec_type = stream.get("codec_type")
 
             if codec_type == "video":
-
-                #
-                # DEBUG
-                #
-
-                print("\n========== VIDEO STREAM ==========")
-
-                print(
-                    json.dumps(
-                        stream,
-                        indent=4,
-                        ensure_ascii=False,
-                    )
-                )
-
-                print("==================================\n")
 
                 video_tracks.append(
                     VideoTrack(

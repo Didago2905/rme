@@ -20,6 +20,7 @@ from core.models.parsed_episode import ParsedEpisode
 from core.models.process_result import ProcessResult
 from core.models.season_metadata import SeasonMetadata
 from core.models.series_metadata import SeriesMetadata
+from core.models.ffmpeg_progress import FFmpegProgress
 
 
 class ControlConsoleWidget(QWidget):
@@ -49,12 +50,18 @@ class ControlConsoleWidget(QWidget):
         current_layout = QFormLayout(current_group)
         self.activity_state = QLabel("Idle")
         self.current_item = QLabel("No conversion running")
+        self.current_time = QLabel("--:-- / --:--")
+        self.current_frames = QLabel("0 / 0")
         self.current_progress = QProgressBar()
         self.current_progress.setRange(0, 1)
         self.current_progress.setValue(0)
+
         current_layout.addRow("State", self.activity_state)
         current_layout.addRow("Item", self.current_item)
+        current_layout.addRow("Time", self.current_time)
+        current_layout.addRow("Frames", self.current_frames)
         current_layout.addRow("Current Item", self.current_progress)
+
         content_layout.addWidget(current_group)
 
         queue_group = QGroupBox("Queue")
@@ -175,8 +182,31 @@ class ControlConsoleWidget(QWidget):
         self._set_state(episode, "Running")
         self.activity_state.setText("Running")
         self.current_item.setText(episode.media_item.file_name)
+        self.current_time.setText("--:-- / --:--")
+        self.current_frames.setText("0 / 0")
         self.current_progress.setRange(0, 0)
         self._refresh_queue()
+
+    def update_conversion_progress(
+        self,
+        progress: FFmpegProgress,
+        total_frames: int,
+        total_duration: str,
+    ) -> None:
+        current_seconds = int(progress.time_seconds)
+
+        minutes = current_seconds // 60
+        seconds = current_seconds % 60
+
+        current_time = f"{minutes:02}:{seconds:02}"
+
+        self.current_time.setText(
+        f"{current_time} / {total_duration}"
+        )
+
+        self.current_frames.setText(
+        f"{progress.frame} / {total_frames}"
+    )    
 
     def mark_result(
         self,
@@ -196,6 +226,8 @@ class ControlConsoleWidget(QWidget):
         self.current_item.setText(episode.media_item.file_name)
         self.current_progress.setRange(0, 1)
         self.current_progress.setValue(1)
+        self.current_time.setText("--:-- / --:--")
+        self.current_frames.setText("0 / 0")
         self._refresh_queue()
 
     def show_library_destination_required(self) -> None:
