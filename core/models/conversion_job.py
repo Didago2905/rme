@@ -1,5 +1,8 @@
 from dataclasses import dataclass
 
+from core.models.audio_track import AudioTrack
+from core.models.subtitle_track import SubtitleTrack
+
 
 @dataclass(slots=True)
 class ConversionJob:
@@ -30,8 +33,9 @@ class ConversionJob:
     # Subtitles
     target_subtitle_codec: str = ""
 
-    audio_languages: list[str] | None = None
+    # Selected tracks
+    audio_tracks: list[AudioTrack] | None = None
 
-    subtitle_languages: list[str] | None = None
+    subtitle_tracks: list[SubtitleTrack] | None = None
 
-    default_audio_language: str | None = None
+    default_audio_track: AudioTrack | None = None

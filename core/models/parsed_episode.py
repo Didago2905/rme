@@ -14,6 +14,7 @@ class ParsedEpisode:
 
     media_item: MediaItem
 
-    season_number: int
+    season_number: int | None
 
-    episode_number: int
+
+    episode_number: int | None

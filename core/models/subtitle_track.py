@@ -7,6 +7,14 @@ from core.models.media_language import (
 
 @dataclass(slots=True)
 class SubtitleTrack:
+    stream_index: int
+
     codec: str
 
     language: MediaLanguage
+
+    title: str
+
+    default: bool
+
+    forced: bool

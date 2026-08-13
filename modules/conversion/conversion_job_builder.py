@@ -32,31 +32,31 @@ class ConversionJobBuilder:
         by the Converter.
         """
 
-        audio_languages: list[str] = []
+        audio_tracks = []
 
-        subtitle_languages: list[str] = []
+        subtitle_tracks = []
 
-        default_audio_language: str | None = None
+        default_audio_track = None
 
         if conversion_settings is not None:
 
-            audio_languages = (
+            audio_tracks = (
                 conversion_settings.get(
-                    "audio",
+                    "audio_tracks",
                     [],
                 )
             )
 
-            subtitle_languages = (
+            subtitle_tracks = (
                 conversion_settings.get(
-                    "subtitles",
+                    "subtitle_tracks",
                     [],
                 )
             )
 
-            default_audio_language = (
+            default_audio_track = (
                 conversion_settings.get(
-                    "default_audio",
+                    "default_audio_track",
                 )
             )
 
@@ -100,10 +100,10 @@ class ConversionJobBuilder:
             include_audio=True,
             include_subtitles=False,
 
-            # Language preferences
-            audio_languages=audio_languages,
-            subtitle_languages=subtitle_languages,
-            default_audio_language=(
-                default_audio_language
+            # Selected tracks
+            audio_tracks=audio_tracks,
+            subtitle_tracks=subtitle_tracks,
+            default_audio_track=(
+                default_audio_track
             ),
         )

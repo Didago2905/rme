@@ -6,14 +6,47 @@ from modules.analyzer.analyzer import Analyzer
 def test_analyzer():
     sample_dir = Path("data/samples")
 
-    file_path = next(sample_dir.iterdir())
+    file_path = (
+        sample_dir
+        / "Frieren_S01E01_02m10s_02m30s_source.mp4"
+    )
 
     analyzer = Analyzer()
 
     result = analyzer.analyze(file_path)
 
-    for video in result.media_file.video_tracks:
+    assert result.success is True
+
+    media_item = result.media_item
+
+    print("\n=== VIDEO TRACKS ===")
+
+    for video in media_item.video_tracks:
         print(video)
+
+    print("\n=== AUDIO TRACKS ===")
+
+    for audio in media_item.audio_tracks:
+        print(
+            f"Stream: {audio.stream_index} | "
+            f"Language: {audio.language.code} | "
+            f"Title: {audio.title} | "
+            f"Codec: {audio.codec} | "
+            f"Default: {audio.default} | "
+            f"Forced: {audio.forced}"
+        )
+
+    print("\n=== SUBTITLE TRACKS ===")
+
+    for subtitle in media_item.subtitle_tracks:
+        print(
+            f"Stream: {subtitle.stream_index} | "
+            f"Language: {subtitle.language.code} | "
+            f"Title: {subtitle.title} | "
+            f"Codec: {subtitle.codec} | "
+            f"Default: {subtitle.default} | "
+            f"Forced: {subtitle.forced}"
+        )
 
 
 if __name__ == "__main__":

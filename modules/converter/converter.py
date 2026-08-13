@@ -146,36 +146,11 @@ class Converter:
         if not job.include_audio:
             return command
 
-        if job.audio_languages:
+        audio_tracks = list(
+            job.audio_tracks or []
+        )
 
-            languages = list(
-                job.audio_languages
-            )
-
-            if (
-                job.default_audio_language
-                and job.default_audio_language in languages
-            ):
-
-                languages.remove(
-                    job.default_audio_language
-                )
-
-                languages.insert(
-                    0,
-                    job.default_audio_language,
-                )
-
-            for language in languages:
-
-                command.extend(
-                    [
-                        "-map",
-                        f"0:a:m:language:{language}",
-                    ]
-                )
-
-        else:
+        if not audio_tracks:
 
             command.extend(
                 [
@@ -183,6 +158,35 @@ class Converter:
                     "0:a",
                 ]
             )
+
+        else:
+
+            default_track = (
+                job.default_audio_track
+            )
+
+            if (
+                default_track is not None
+                and default_track in audio_tracks
+            ):
+
+                audio_tracks.remove(
+                    default_track
+                )
+
+                audio_tracks.insert(
+                    0,
+                    default_track
+                )
+
+            for track in audio_tracks:
+
+                command.extend(
+                    [
+                        "-map",
+                        f"0:{track.stream_index}",
+                    ]
+                )
 
         if job.convert_audio:
 
@@ -201,6 +205,35 @@ class Converter:
                     "copy",
                 ]
             )
+
+        if audio_tracks:
+
+            for index, track in enumerate(
+                audio_tracks
+            ):
+
+                if (
+                    job.default_audio_track
+                    is not None
+                    and track
+                    is job.default_audio_track
+                ):
+
+                    command.extend(
+                        [
+                            f"-disposition:a:{index}",
+                            "default",
+                        ]
+                    )
+
+                else:
+
+                    command.extend(
+                        [
+                            f"-disposition:a:{index}",
+                            "0",
+                        ]
+                    )
 
         return command
 

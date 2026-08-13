@@ -1,5 +1,4 @@
 from PySide6.QtCore import Qt
-
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -11,10 +10,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.models.parsed_episode import (
-    ParsedEpisode,
-)
-
+from core.models.audio_track import AudioTrack
+from core.models.parsed_episode import ParsedEpisode
+from core.models.subtitle_track import SubtitleTrack
 from modules.preferences.available_tracks_builder import (
     AvailableTracksBuilder,
 )
@@ -32,6 +30,10 @@ class ConversionSetupWidget(QWidget):
         self._audio_checkboxes = []
 
         self._subtitle_checkboxes = []
+
+        self._audio_tracks = []
+
+        self._subtitle_tracks = []
 
         self._audio_group = (
             QButtonGroup(self)
@@ -254,14 +256,14 @@ class ConversionSetupWidget(QWidget):
         # AUDIO
         #
 
-        for index, language in enumerate(
-            available_tracks.audio_languages
+        for index, track in enumerate(
+            available_tracks.audio_tracks
         ):
 
             row = QHBoxLayout()
 
             checkbox = QCheckBox(
-                language.code.upper()
+                self._audio_track_label(track)
             )
 
             checkbox.setChecked(True)
@@ -294,6 +296,10 @@ class ConversionSetupWidget(QWidget):
                 checkbox
             )
 
+            self._audio_tracks.append(
+                track
+            )
+
         if not self._audio_checkboxes:
 
             self.audio_layout.addWidget(
@@ -304,12 +310,12 @@ class ConversionSetupWidget(QWidget):
         # SUBTITLES
         #
 
-        for language in (
-            available_tracks.subtitle_languages
+        for track in (
+            available_tracks.subtitle_tracks
         ):
 
             checkbox = QCheckBox(
-                language.code.upper()
+                self._subtitle_track_label(track)
             )
 
             checkbox.setChecked(True)
@@ -322,11 +328,53 @@ class ConversionSetupWidget(QWidget):
                 checkbox
             )
 
+            self._subtitle_tracks.append(
+                track
+            )
+
         if not self._subtitle_checkboxes:
 
             self.subtitle_layout.addWidget(
                 QLabel("None")
             )
+
+    def _audio_track_label(
+        self,
+        track: AudioTrack,
+    ) -> str:
+
+        language = track.language.code.upper()
+
+        if track.title:
+
+            return (
+                f"{language} - "
+                f"{track.title}"
+            )
+
+        return (
+            f"{language} "
+            f"(Stream {track.stream_index})"
+        )
+
+    def _subtitle_track_label(
+        self,
+        track: SubtitleTrack,
+    ) -> str:
+
+        language = track.language.code.upper()
+
+        if track.title:
+
+            return (
+                f"{language} - "
+                f"{track.title}"
+            )
+
+        return (
+            f"{language} "
+            f"(Stream {track.stream_index})"
+        )
 
     def _clear_language_lists(
         self,
@@ -384,35 +432,54 @@ class ConversionSetupWidget(QWidget):
 
         self._subtitle_checkboxes.clear()
 
+        self._audio_tracks.clear()
+
+        self._subtitle_tracks.clear()
+
     def conversion_settings(
         self,
     ) -> dict:
 
-        default_audio = None
+        selected_audio_tracks = []
 
-        for checkbox, radio in zip(
-            self._audio_checkboxes,
-            self._audio_group.buttons(),
+        selected_subtitle_tracks = []
+
+        default_audio_track = None
+
+        for index, (
+            checkbox,
+            radio,
+        ) in enumerate(
+            zip(
+                self._audio_checkboxes,
+                self._audio_group.buttons(),
+            )
         ):
+
+            track = self._audio_tracks[index]
+
+            if checkbox.isChecked():
+
+                selected_audio_tracks.append(
+                    track
+                )
 
             if radio.isChecked():
 
-                default_audio = (
-                    checkbox.text().lower()
+                default_audio_track = track
+
+        for index, checkbox in enumerate(
+            self._subtitle_checkboxes
+        ):
+
+            if checkbox.isChecked():
+
+                selected_subtitle_tracks.append(
+                    self._subtitle_tracks[index]
                 )
 
-                break
-
         return {
-            "audio": [
-                checkbox.text().lower()
-                for checkbox in self._audio_checkboxes
-                if checkbox.isChecked()
-        ],
-        "subtitles": [
-            checkbox.text().lower()
-            for checkbox in self._subtitle_checkboxes
-            if checkbox.isChecked()
-        ],
-        "default_audio": default_audio,
-    }
+            "audio_tracks": selected_audio_tracks,
+            "subtitle_tracks": selected_subtitle_tracks,
+            "default_audio_track": default_audio_track,
+        }

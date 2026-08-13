@@ -5,8 +5,8 @@ from core.models.audio_track import AudioTrack
 from core.models.media_item import MediaItem
 from core.models.subtitle_track import SubtitleTrack
 from core.models.video_track import VideoTrack
-from services.ffmpeg_service import FFmpegService
 from core.models.media_language import MediaLanguage
+from services.ffmpeg_service import FFmpegService
 
 
 class Analyzer:
@@ -65,26 +65,50 @@ class Analyzer:
 
             elif stream_type == "audio":
                 disposition = stream.get("disposition", {})
+                tags = stream.get("tags", {})
 
                 audio_tracks.append(
                     AudioTrack(
+                        stream_index=stream.get("index", -1),
                         codec=stream.get("codec_name", ""),
                         language=MediaLanguage(
-                            code=stream.get("tags", {}).get("language", ""),
+                            code=tags.get("language", ""),
                         ),
                         channels=stream.get("channels", 0),
                         bitrate=int(stream.get("bit_rate", 0)),
-                        default=bool(disposition.get("default", 0)),
-                        forced=bool(disposition.get("forced", 0)),
+                        title=tags.get(
+                            "title",
+                            tags.get("name", ""),
+                        ),
+                        default=bool(
+                            disposition.get("default", 0)
+                        ),
+                        forced=bool(
+                            disposition.get("forced", 0)
+                        ),
                     )
                 )
 
             elif stream_type == "subtitle":
+                disposition = stream.get("disposition", {})
+                tags = stream.get("tags", {})
+
                 subtitle_tracks.append(
                     SubtitleTrack(
+                        stream_index=stream.get("index", -1),
                         codec=stream.get("codec_name", ""),
                         language=MediaLanguage(
-                            code=stream.get("tags", {}).get("language", ""),
+                            code=tags.get("language", ""),
+                        ),
+                        title=tags.get(
+                            "title",
+                            tags.get("name", ""),
+                        ),
+                        default=bool(
+                            disposition.get("default", 0)
+                        ),
+                        forced=bool(
+                            disposition.get("forced", 0)
                         ),
                     )
                 )
@@ -93,9 +117,19 @@ class Analyzer:
             file_name=file_path.name,
             path=file_path,
             container=file_path.suffix.lower().lstrip("."),
-            duration_seconds=float(media_info.get("format", {}).get("duration", 0.0)),
+            duration_seconds=float(
+                media_info.get("format", {}).get(
+                    "duration",
+                    0.0,
+                )
+            ),
             size_bytes=file_path.stat().st_size,
-            bitrate=int(media_info.get("format", {}).get("bit_rate", 0)),
+            bitrate=int(
+                media_info.get("format", {}).get(
+                    "bit_rate",
+                    0,
+                )
+            ),
             video_tracks=video_tracks,
             audio_tracks=audio_tracks,
             subtitle_tracks=subtitle_tracks,

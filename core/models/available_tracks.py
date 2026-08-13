@@ -1,13 +1,16 @@
 from dataclasses import dataclass
 
-from core.models.media_language import (
-    MediaLanguage,
+from core.models.audio_track import (
+    AudioTrack,
+)
+from core.models.subtitle_track import (
+    SubtitleTrack,
 )
 
 
 @dataclass(slots=True)
 class AvailableTracks:
 
-    audio_languages: list[MediaLanguage]
+    audio_tracks: list[AudioTrack]
 
-    subtitle_languages: list[MediaLanguage]
+    subtitle_tracks: list[SubtitleTrack]

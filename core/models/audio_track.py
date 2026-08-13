@@ -5,6 +5,8 @@ from core.models.media_language import MediaLanguage
 
 @dataclass(slots=True)
 class AudioTrack:
+    stream_index: int
+
     codec: str
 
     channels: int
@@ -12,6 +14,8 @@ class AudioTrack:
     bitrate: int
 
     language: MediaLanguage
+
+    title: str
 
     default: bool
 
