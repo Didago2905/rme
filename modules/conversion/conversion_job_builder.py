@@ -1,5 +1,4 @@
 from core.models.media_file import MediaFile
-
 from core.models.conversion_job import (
     ConversionJob,
 )
@@ -98,7 +97,9 @@ class ConversionJobBuilder:
             # Streams
             include_video=True,
             include_audio=True,
-            include_subtitles=False,
+            include_subtitles=bool(
+                subtitle_tracks
+            ),
 
             # Selected tracks
             audio_tracks=audio_tracks,

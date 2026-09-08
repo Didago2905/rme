@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.models.media_item import MediaItem
 from core.models.parsed_episode import ParsedEpisode
 from core.models.series_metadata import SeriesMetadata
 
@@ -84,6 +85,35 @@ class ImportPreviewWidget(QWidget):
             self._request_queue
         )
 
+    def _update_queue_button(
+        self,
+        has_selection: bool,
+    ) -> None:
+
+        self.add_to_queue_button.setEnabled(
+            has_selection
+        )
+
+        if has_selection:
+
+            self.add_to_queue_button.setStyleSheet(
+                "background-color: #1976D2;"
+            )
+
+        else:
+
+            self.add_to_queue_button.setStyleSheet(
+                ""
+            )
+
+    def reset_queue_button(
+        self,
+    ) -> None:
+
+        self._update_queue_button(
+            False
+        )
+
     def _on_selection_changed(self) -> None:
 
         item = self.tree.currentItem()
@@ -97,13 +127,13 @@ class ImportPreviewWidget(QWidget):
         column: int,
     ) -> None:
 
-        episodes = self.selected_episodes()
+        episodes = self.selected_items()
 
         self.selection_changed.emit(
             episodes
         )
 
-        self.add_to_queue_button.setEnabled(
+        self._update_queue_button(
             bool(episodes)
         )
 
@@ -112,12 +142,12 @@ class ImportPreviewWidget(QWidget):
     ) -> None:
 
         self.queue_requested.emit(
-            self.selected_episodes()
+            self.selected_items()
         )
 
-    def selected_episodes(
+    def selected_items(
         self,
-    ) -> list[ParsedEpisode]:
+    ) -> list[ParsedEpisode | MediaItem]:
 
         episodes = []
 
@@ -133,7 +163,7 @@ class ImportPreviewWidget(QWidget):
             if (
                 isinstance(
                     selected,
-                    ParsedEpisode,
+                    (ParsedEpisode, MediaItem),
                 )
                 and item.checkState(0)
                 == Qt.CheckState.Checked
@@ -175,8 +205,18 @@ class ImportPreviewWidget(QWidget):
 
         for season in metadata.seasons:
 
+            if season.season_number is None:
+
+                season_label = "Season ?"
+
+            else:
+
+                season_label = (
+                    f"Season {season.season_number}"
+                )
+
             season_item = self._create_item(
-                f"Season {season.season_number}",
+                season_label,
                 season,
                 tri_state=True,
             )
@@ -187,11 +227,25 @@ class ImportPreviewWidget(QWidget):
 
             for episode in season.episodes:
 
-                episode_item = self._create_item(
-                    (
+                if (
+                    episode.season_number is not None
+                    and episode.episode_number is not None
+                ):
+
+                    episode_label = (
                         f"S{episode.season_number:02}"
                         f"E{episode.episode_number:02}"
-                    ),
+                    )
+
+                else:
+
+                    episode_label = (
+                        "Unnumbered - "
+                        f"{episode.media_item.file_name}"
+                    )
+
+                episode_item = self._create_item(
+                    episode_label,
                     episode,
                 )
 
@@ -205,9 +259,21 @@ class ImportPreviewWidget(QWidget):
 
         self.tree.blockSignals(False)
 
-        self.add_to_queue_button.setEnabled(
+        self._update_queue_button(
             False
         )
+
+    def load_movie(
+        self,
+        media_item: MediaItem,
+    ) -> None:
+        self.tree.blockSignals(True)
+        self.tree.clear()
+        self.tree.addTopLevelItem(
+            self._create_item(media_item.path.parent.name, media_item)
+        )
+        self.tree.blockSignals(False)
+        self._update_queue_button(False)
 
     def _create_item(
         self,

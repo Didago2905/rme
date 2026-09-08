@@ -8,7 +8,7 @@ def test_analyzer():
 
     file_path = (
         sample_dir
-        / "Frieren_S01E01_02m10s_02m30s_source.mp4"
+        / "[locuranime.com]1080p X-Me97-2-01.mkv"
     )
 
     analyzer = Analyzer()

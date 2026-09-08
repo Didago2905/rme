@@ -94,32 +94,9 @@ class Converter:
                 self._build_audio_command(job)
             )
 
-            if job.include_subtitles:
-
-                command.extend(
-                    [
-                        "-map",
-                        "0:s",
-                    ]
-                )
-
-                if job.convert_subtitles:
-
-                    command.extend(
-                        [
-                            "-c:s",
-                            job.target_subtitle_codec,
-                        ]
-                    )
-
-                else:
-
-                    command.extend(
-                        [
-                            "-c:s",
-                            "copy",
-                        ]
-                    )
+            command.extend(
+                self._build_subtitle_command(job)
+            )
 
             command.append(
                 str(output_path)
@@ -234,6 +211,61 @@ class Converter:
                             "0",
                         ]
                     )
+
+        return command
+
+    def _build_subtitle_command(
+        self,
+        job: ConversionJob,
+    ) -> list[str]:
+
+        command = []
+
+        if not job.include_subtitles:
+            return command
+
+        subtitle_tracks = list(
+            job.subtitle_tracks or []
+        )
+
+        if not subtitle_tracks:
+            return command
+
+        for track in subtitle_tracks:
+
+            command.extend(
+                [
+                    "-map",
+                    f"0:{track.stream_index}",
+                ]
+            )
+
+        if job.target_container.lower() == "mp4":
+
+            command.extend(
+                [
+                    "-c:s",
+                    "mov_text",
+                ]
+            )
+
+        elif job.convert_subtitles:
+
+            command.extend(
+                [
+                    "-c:s",
+                    job.target_subtitle_codec,
+                ]
+            )
+
+        else:
+
+            command.extend(
+                [
+                    "-c:s",
+                    "copy",
+                ]
+            )
 
         return command
 

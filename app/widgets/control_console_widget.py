@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.themes.buttons import apply_primary_button
+from core.models.media_item import MediaItem
 from core.models.parsed_episode import ParsedEpisode
 from core.models.process_result import ProcessResult
 from core.models.season_metadata import SeasonMetadata
@@ -148,30 +149,23 @@ class ControlConsoleWidget(QWidget):
             selected_group
         )
 
-        self.selected_type = QLabel("-")
-        self.selected_name = QLabel("-")
-        self.selected_file = QLabel("-")
-        self.selected_path = QLabel("-")
-        self.selected_path.setWordWrap(True)
+        self.selected_resolution = QLabel("—")
+        self.selected_video_codec = QLabel("—")
+        self.selected_container = QLabel("—")
 
         selected_layout.addRow(
-            "Type",
-            self.selected_type,
+            "Resolution",
+            self.selected_resolution,
         )
 
         selected_layout.addRow(
-            "Name",
-            self.selected_name,
+            "Video Codec",
+            self.selected_video_codec,
         )
 
         selected_layout.addRow(
-            "File",
-            self.selected_file,
-        )
-
-        selected_layout.addRow(
-            "Path",
-            self.selected_path,
+            "Container",
+            self.selected_container,
         )
 
         content_layout.addWidget(
@@ -227,9 +221,9 @@ class ControlConsoleWidget(QWidget):
             scroll_area
         )
 
-    def add_episodes(
+    def add_media_items(
         self,
-        episodes: list[ParsedEpisode],
+        media_items: list[MediaItem],
         output_paths: dict[Path, Path],
     ) -> None:
         queued_paths = {
@@ -237,14 +231,14 @@ class ControlConsoleWidget(QWidget):
             for entry in self._queue
         }
 
-        for episode in episodes:
-            path = episode.media_item.path
+        for media_item in media_items:
+            path = media_item.path
 
             if path not in queued_paths:
 
                 self._queue.append(
                     {
-                        "episode": episode,
+                        "media_item": media_item,
                         "path": path,
                         "output_path": output_paths[path],
                         "state": "Queued",
@@ -255,25 +249,25 @@ class ControlConsoleWidget(QWidget):
 
         self._refresh_queue()
 
-    def next_queued_episode(
+    def next_queued_media_item(
         self,
-    ) -> ParsedEpisode | None:
+    ) -> MediaItem | None:
 
         for entry in self._queue:
 
             if entry["state"] == "Queued":
-                return entry["episode"]
+                return entry["media_item"]
 
         return None
 
     def output_path_for(
         self,
-        episode: ParsedEpisode,
+        media_item: MediaItem,
     ) -> Path | None:
 
         for entry in self._queue:
 
-            if entry["path"] == episode.media_item.path:
+            if entry["path"] == media_item.path:
                 return entry["output_path"]
 
         return None
@@ -310,13 +304,13 @@ class ControlConsoleWidget(QWidget):
 
     def mark_running(
         self,
-        episode: ParsedEpisode,
+        media_item: MediaItem,
     ) -> None:
 
         self._is_running = True
 
         self._set_state(
-            episode,
+            media_item,
             "Running",
         )
 
@@ -325,7 +319,7 @@ class ControlConsoleWidget(QWidget):
         )
 
         self.current_item.setText(
-            episode.media_item.file_name
+            media_item.file_name
         )
 
         self.current_time.setText(
@@ -350,6 +344,13 @@ class ControlConsoleWidget(QWidget):
         total_duration: str,
     ) -> None:
 
+        self.current_frames.setText(
+            f"{progress.frame} / {total_frames}"
+        )
+
+        if progress.time_seconds is None:
+            return
+
         current_seconds = int(
             progress.time_seconds
         )
@@ -365,13 +366,9 @@ class ControlConsoleWidget(QWidget):
             f"{current_time} / {total_duration}"
         )
 
-        self.current_frames.setText(
-            f"{progress.frame} / {total_frames}"
-        )
-
     def mark_result(
         self,
-        episode: ParsedEpisode,
+        media_item: MediaItem,
         result: ProcessResult,
     ) -> None:
 
@@ -387,7 +384,7 @@ class ControlConsoleWidget(QWidget):
         self._is_running = False
 
         self._set_state(
-            episode,
+            media_item,
             state,
         )
 
@@ -396,7 +393,7 @@ class ControlConsoleWidget(QWidget):
         )
 
         self.current_item.setText(
-            episode.media_item.file_name
+            media_item.file_name
         )
 
         self.current_progress.setRange(
@@ -439,85 +436,56 @@ class ControlConsoleWidget(QWidget):
 
         if isinstance(
             item,
-            SeriesMetadata,
+            (ParsedEpisode, MediaItem),
         ):
 
-            self.selected_type.setText(
-                "Series"
+            self.show_media(
+                item.media_item if isinstance(item, ParsedEpisode) else item
             )
 
-            self.selected_name.setText(
-                item.name
-            )
-
-            return
-
-        if isinstance(
-            item,
-            SeasonMetadata,
-        ):
-
-            self.selected_type.setText(
-                "Season"
-            )
-
-            self.selected_name.setText(
-                f"Season {item.season_number}"
-            )
-
-            return
-
-        if isinstance(
-            item,
-            ParsedEpisode,
-        ):
-
-            self.show_episode(
-                item
-            )
-
-    def show_episode(
+    def show_media(
         self,
-        episode: ParsedEpisode,
+        media_item: MediaItem,
     ) -> None:
 
         self._clear_selected_summary()
 
-        self.selected_type.setText(
-            "Episode"
+        self.selected_container.setText(
+            media_item.container or "—"
         )
 
-        self.selected_name.setText(
-            f"S{episode.season_number:02}"
-            f"E{episode.episode_number:02}"
+        if not media_item.video_tracks:
+            return
+
+        video = media_item.video_tracks[0]
+
+        self.selected_resolution.setText(
+            f"{video.width} x {video.height}"
+            if video.width and video.height
+            else "—"
         )
 
-        self.selected_file.setText(
-            episode.media_item.file_name
-        )
-
-        self.selected_path.setText(
-            str(episode.media_item.path)
+        self.selected_video_codec.setText(
+            video.codec or "—"
         )
 
     def _clear_selected_summary(
         self,
     ) -> None:
 
-        self.selected_type.setText("-")
-        self.selected_name.setText("-")
-        self.selected_file.setText("-")
-        self.selected_path.setText("-")
+        self.selected_resolution.setText("—")
+        self.selected_video_codec.setText("—")
+        self.selected_container.setText("—")
 
     def _set_state(
         self,
-        episode: ParsedEpisode,
+        media_item: MediaItem,
         state: str,
     ) -> None:
 
         for entry in self._queue:
 
-            if entry["path"] == episode.media_item.path:
+            if entry["path"] == media_item.path:
 
                 entry["state"] = state
 
@@ -534,12 +502,12 @@ class ControlConsoleWidget(QWidget):
 
         for entry in self._queue:
 
-            episode = entry["episode"]
+            media_item = entry["media_item"]
             state = entry["state"]
 
             item = QListWidgetItem(
                 f"{state} ? "
-                f"{episode.media_item.file_name}"
+                f"{media_item.file_name}"
             )
 
             item.setData(

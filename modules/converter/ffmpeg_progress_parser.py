@@ -28,14 +28,13 @@ class FFmpegProgressParser:
             if not value.isdigit():
                 return None
 
-            self._time_seconds = int(value) / 1_000_000
+            self._time_seconds = (
+                int(value) / 1_000_000
+            )
 
         elif key == "progress":
 
-            if (
-                self._frame is None
-                or self._time_seconds is None
-            ):
+            if self._frame is None:
                 return None
 
             return FFmpegProgress(

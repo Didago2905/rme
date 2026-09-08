@@ -20,7 +20,11 @@ class MissingDetector:
         episode_numbers = sorted(
             episode.episode_number
             for episode in episodes
+            if episode.episode_number is not None
         )
+
+        if not episode_numbers:
+            return []
 
         first_episode = episode_numbers[0]
 

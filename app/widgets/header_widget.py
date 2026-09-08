@@ -26,7 +26,7 @@ class HeaderWidget(QWidget):
         title = QLabel("R.I.T.M.O. Media Engine")
         title.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
-        version = QLabel("v1.0")
+        version = QLabel("v1.1.0")
         version.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
         self.active_library = QLabel("No library selected")

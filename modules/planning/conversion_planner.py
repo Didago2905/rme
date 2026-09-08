@@ -52,19 +52,33 @@ class ConversionPlanner:
             "Video level",
         )
 
-        audio_errors = ("Audio codec",)
+        audio_errors = (
+            "Audio codec",
+        )
 
-        has_container_error = "Container" in errors
+        has_container_error = (
+            "Container" in errors
+        )
 
-        has_video_error = any(text in errors for text in video_errors)
+        has_video_error = any(
+            text in errors
+            for text in video_errors
+        )
 
-        has_audio_error = any(text in errors for text in audio_errors)
+        has_audio_error = any(
+            text in errors
+            for text in audio_errors
+        )
 
         #
         # Remux only
         #
 
-        if has_container_error and not has_video_error and not has_audio_error:
+        if (
+            has_container_error
+            and not has_video_error
+            and not has_audio_error
+        ):
             return ConversionPlan(
                 compatible=False,
                 remux_container=True,
@@ -74,29 +88,29 @@ class ConversionPlanner:
             )
 
         #
-        # Video conversion
+        # Video and audio conversion
         #
 
-        if has_video_error:
+        if has_video_error or has_audio_error:
+
+            reasons = []
+
+            if has_video_error:
+                reasons.append(
+                    "Video conversion required."
+                )
+
+            if has_audio_error:
+                reasons.append(
+                    "Audio conversion required."
+                )
+
             return ConversionPlan(
                 compatible=False,
                 remux_container=False,
-                convert_video=True,
-                convert_audio=False,
-                reason="Video conversion required.",
-            )
-
-        #
-        # Audio conversion
-        #
-
-        if has_audio_error:
-            return ConversionPlan(
-                compatible=False,
-                remux_container=False,
-                convert_video=False,
-                convert_audio=True,
-                reason="Audio conversion required.",
+                convert_video=has_video_error,
+                convert_audio=has_audio_error,
+                reason=" ".join(reasons),
             )
 
         #

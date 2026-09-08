@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.models.audio_track import AudioTrack
+from core.models.media_item import MediaItem
 from core.models.parsed_episode import ParsedEpisode
 from core.models.subtitle_track import SubtitleTrack
 from modules.preferences.available_tracks_builder import (
@@ -142,7 +143,7 @@ class ConversionSetupWidget(QWidget):
 
     def load_selection(
         self,
-        episodes: list[ParsedEpisode],
+        episodes: list[ParsedEpisode | MediaItem],
     ) -> None:
 
         self._clear_language_lists()
@@ -161,96 +162,108 @@ class ConversionSetupWidget(QWidget):
 
             return
 
+        media_items = [
+            item.media_item if isinstance(item, ParsedEpisode) else item
+            for item in episodes
+        ]
+
         available_tracks = (
             self._tracks_builder.build(
-                episodes
+                media_items
             )
         )
 
-        series_name = (
-            episodes[0]
-            .media_item
-            .path
-            .parent
-            .parent
-            .name
-        )
-
-        seasons = sorted(
-            {
-                episode.season_number
-                for episode in episodes
-            }
-        )
-
-        count = len(episodes)
-
-        self.summary.clear()
-
-        self.series_label.setText(
-            f"Series: {series_name}"
-        )
-
-        if count == 1:
-
-            episode = episodes[0]
-
-            self.selection_label.setText(
-                (
-                    "Selection: "
-                    f"S{episode.season_number:02}"
-                    f"E{episode.episode_number:02}"
-                )
-            )
-
-        elif len(seasons) == 1:
-
-            self.selection_label.setText(
-                (
-                    "Selection: "
-                    f"Season {seasons[0]}"
-                )
-            )
-
+        if isinstance(episodes[0], MediaItem):
+            media_item = media_items[0]
+            self.summary.clear()
+            self.series_label.setText(f"Movie: {media_item.path.parent.name}")
+            self.selection_label.setText(f"Selection: {media_item.file_name}")
+            self.episodes_label.clear()
         else:
+            series_name = (
+                episodes[0]
+                .media_item
+                .path
+                .parent
+                .parent
+                .name
+            )
 
-            first = seasons[0]
+            seasons = sorted(
+                {
+                    episode.season_number
+                    for episode in episodes
+                }
+            )
 
-            last = seasons[-1]
+            count = len(episodes)
 
-            consecutive = (
-                seasons
-                == list(
-                    range(
-                        first,
-                        last + 1,
+            self.summary.clear()
+
+            self.series_label.setText(
+                f"Series: {series_name}"
+            )
+
+            if count == 1:
+
+                episode = episodes[0]
+
+                self.selection_label.setText(
+                    (
+                        "Selection: "
+                        f"S{episode.season_number:02}"
+                        f"E{episode.episode_number:02}"
                     )
                 )
-            )
 
-            if consecutive:
+            elif len(seasons) == 1:
 
-                selection = (
-                    f"Season {first}–{last}"
+                self.selection_label.setText(
+                    (
+                        "Selection: "
+                        f"Season {seasons[0]}"
+                    )
                 )
 
             else:
 
-                selection = (
-                    "Season "
-                    + ", ".join(
-                        str(season)
-                        for season in seasons
+                first = seasons[0]
+
+                last = seasons[-1]
+
+                consecutive = (
+                    seasons
+                    == list(
+                        range(
+                            first,
+                            last + 1,
+                        )
                     )
                 )
 
-            self.selection_label.setText(
-                f"Selection: {selection}"
-            )
+                if consecutive:
 
-        self.episodes_label.setText(
-            f"Episodes: {count}"
-        )
+                    selection = (
+                        f"Season {first}–{last}"
+                    )
+
+                else:
+
+                    selection = (
+                        "Season "
+                        + ", ".join(
+                            str(season)
+                            for season in seasons
+                        )
+                    )
+
+                self.selection_label.setText(
+                    f"Selection: {selection}"
+                )
+
+            self.episodes_label.setText(
+                f"Episodes: {count}"
+            )
 
         #
         # AUDIO

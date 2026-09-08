@@ -22,7 +22,7 @@ class ParsedEpisodeBuilder:
     def build(
         self,
         media_item: MediaItem,
-    ) -> ParsedEpisode | None:
+    ) -> ParsedEpisode:
 
         match = self._parser.parse(
             media_item.file_name
@@ -30,7 +30,11 @@ class ParsedEpisodeBuilder:
 
         if match is None:
 
-            return None
+            return ParsedEpisode(
+                media_item=media_item,
+                season_number=None,
+                episode_number=None,
+            )
 
         return ParsedEpisode(
             media_item=media_item,

@@ -3,6 +3,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QSettings, QThread, Signal
 from PySide6.QtWidgets import (
     QMainWindow,
+    QMessageBox,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -14,6 +15,8 @@ from app.widgets.control_console_widget import ControlConsoleWidget
 from app.widgets.header_widget import HeaderWidget
 from app.widgets.import_preview_widget import ImportPreviewWidget
 from app.widgets.library_panel_widget import LibraryPanelWidget
+from core.models.media_item import MediaItem
+from modules.scanner.library_scanner import SUPPORTED_EXTENSIONS
 from core.models.parsed_episode import ParsedEpisode
 from core.models.process_result import ProcessResult
 from core.utils.media_library_name import build_episode_filename
@@ -31,13 +34,13 @@ class ConversionWorker(QThread):
     def __init__(
         self,
         conversion_service: ConversionService,
-        episode: ParsedEpisode,
+        media_item: MediaItem,
         output_path: Path,
         conversion_settings: dict,
     ) -> None:
         super().__init__()
         self._conversion_service = conversion_service
-        self._episode = episode
+        self._media_item = media_item
         self._output_path = output_path
         self._conversion_settings = conversion_settings
 
@@ -50,7 +53,7 @@ class ConversionWorker(QThread):
     def run(self) -> None:
         try:
             result = self._conversion_service.process_file(
-                file_path=self._episode.media_item.path,
+                file_path=self._media_item.path,
                 output_path=self._output_path,
                 conversion_settings=(self._conversion_settings),
                 on_progress=self._on_progress,
@@ -58,19 +61,19 @@ class ConversionWorker(QThread):
         except Exception as error:
             result = ProcessResult(
                 success=False,
-                input_path=self._episode.media_item.path,
+                input_path=self._media_item.path,
                 output_path=self._output_path,
                 error=str(error),
             )
 
-        self.result_ready.emit(self._episode, result)
+        self.result_ready.emit(self._media_item, result)
 
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
 
-        self.setWindowTitle("R.I.T.M.O. Media Engine v1.0")
+        self.setWindowTitle("R.I.T.M.O. Media Engine v1.1.0")
         self.resize(1200, 800)
         self.setMinimumSize(900, 600)
 
@@ -166,13 +169,42 @@ class MainWindow(QMainWindow):
         self,
         series_path: str,
     ) -> None:
-        metadata = self.import_series_use_case.execute(series_path)
 
-        self._active_series_name = metadata.name
+        self.library_panel.set_importing(True)
 
-        self.header.set_active_library(metadata.name)
+        try:
+            folder = Path(series_path)
+            entries = list(folder.iterdir())
+            if any(entry.is_dir() for entry in entries):
+                metadata = self.import_series_use_case.execute(series_path)
+                self._active_series_name = metadata.name
+                self.header.set_active_library(metadata.name)
+                self.import_preview.load_series(metadata)
+            else:
+                files = [
+                    entry for entry in entries
+                    if entry.is_file()
+                    and entry.suffix.lower() in SUPPORTED_EXTENSIONS
+                ]
+                if not files:
+                    QMessageBox.warning(self, "Import Media", "No media files found.")
+                    return
+                if len(files) > 1:
+                    QMessageBox.warning(
+                        self,
+                        "Import Media",
+                        "Ambiguous folder: Movie V1 supports exactly one media file.",
+                    )
+                    return
+                media_item = self.conversion_service.media_service.get_media(files[0])
+                self._active_series_name = ""
+                self.header.set_active_library(folder.name)
+                self.import_preview.load_movie(media_item)
 
-        self.import_preview.load_series(metadata)
+            self.conversion_setup.load_selection([])
+            self.control_console.show_item(None)
+        finally:
+            self.library_panel.set_importing(False)
 
     def _on_item_selected(
         self,
@@ -187,13 +219,13 @@ class MainWindow(QMainWindow):
 
     def _on_selection_changed(
         self,
-        episodes: list[ParsedEpisode],
+        episodes: list[ParsedEpisode | MediaItem],
     ) -> None:
         self.conversion_setup.load_selection(episodes)
 
     def _add_selected_to_queue(
         self,
-        episodes: list[ParsedEpisode],
+        episodes: list[ParsedEpisode | MediaItem],
     ) -> None:
         media_library_path = self.library_panel.selected_media_library_path()
 
@@ -201,24 +233,27 @@ class MainWindow(QMainWindow):
             self.control_console.show_library_destination_required()
             return
 
-        output_paths = {
-            episode.media_item.path: self._build_output_path(
-                Path(media_library_path),
-                episode,
-            )
-            for episode in episodes
-        }
+        output_paths = {}
+        media_items = []
+        for item in episodes:
+            output_path = self._build_output_path(Path(media_library_path), item)
+            media_item = item.media_item if isinstance(item, ParsedEpisode) else item
+            output_paths[media_item.path] = output_path
+            media_items.append(media_item)
 
-        self.control_console.add_episodes(
-            episodes,
-            output_paths,
-        )
+        self.control_console.add_media_items(media_items, output_paths)
+
+        self.import_preview.reset_queue_button()
 
     def _build_output_path(
         self,
         media_library_path: Path,
-        episode: ParsedEpisode,
+        episode: ParsedEpisode | MediaItem,
     ) -> Path:
+
+        if isinstance(episode, MediaItem):
+            folder = episode.path.parent.name
+            return media_library_path / "Movies" / folder / f"{folder}.mp4"
 
         series_name = (
             self._active_series_name or episode.media_item.path.parent.parent.name
@@ -243,21 +278,21 @@ class MainWindow(QMainWindow):
         if self._conversion_worker is not None:
             return
 
-        episode = self.control_console.next_queued_episode()
+        media_item = self.control_console.next_queued_media_item()
 
-        if episode is None:
+        if media_item is None:
             return
 
-        output_path = self.control_console.output_path_for(episode)
+        output_path = self.control_console.output_path_for(media_item)
 
         if output_path is None:
             return
 
-        self.control_console.mark_running(episode)
+        self.control_console.mark_running(media_item)
 
         self._conversion_worker = ConversionWorker(
             self.conversion_service,
-            episode,
+            media_item,
             output_path,
             self.conversion_setup.conversion_settings(),
         )
@@ -276,7 +311,7 @@ class MainWindow(QMainWindow):
         if self._conversion_worker is None:
             return
 
-        media_file = self._conversion_worker._episode.media_item
+        media_file = self._conversion_worker._media_item
 
         self.control_console.update_conversion_progress(
             progress,
@@ -286,12 +321,12 @@ class MainWindow(QMainWindow):
 
     def _on_conversion_finished(
         self,
-        episode: ParsedEpisode,
+        media_item: MediaItem,
         result: ProcessResult,
     ) -> None:
 
         self.control_console.mark_result(
-            episode,
+            media_item,
             result,
         )
 
@@ -299,5 +334,5 @@ class MainWindow(QMainWindow):
             self._conversion_worker.deleteLater()
             self._conversion_worker = None
 
-        if self.control_console.next_queued_episode() is not None:
+        if self.control_console.next_queued_media_item() is not None:
             self._start_queue()
