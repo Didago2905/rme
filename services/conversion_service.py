@@ -3,6 +3,10 @@ from shutil import copy2
 
 from core.constants.paths import LOGS_DIR
 from core.models.process_result import ProcessResult
+from core.models.conversion_job import ConversionJob
+from core.models.media_item import MediaItem
+from modules.validation.output_verifier import OutputVerifier
+from modules.validation.validation_result import ValidationResult
 
 from modules.conversion.conversion_job_builder import (
     ConversionJobBuilder,
@@ -25,21 +29,26 @@ class ConversionService:
     def __init__(self):
         self.media_service = MediaService()
         self.validation_service = ValidationService()
+        self.output_verifier = OutputVerifier()
         self.conversion_planner = ConversionPlanner()
         self.conversion_job_builder = ConversionJobBuilder()
         self.converter = Converter()
         self.logger = LoggerService() 
 
-    def _is_output_valid(
-        self,
-        output_path: Path,
-    ) -> bool:
+    def _validate_output(
+        self, source: MediaItem, output_path: Path, job: ConversionJob,
+    ) -> ValidationResult:
+        try:
+            if not output_path.is_file() or output_path.stat().st_size == 0:
+                return ValidationResult(False, ["Output file is missing or empty."])
+            output = self.media_service.get_media(output_path)
+            verification = self.output_verifier.verify(source, output, job)
+        except Exception as error:
+            return ValidationResult(False, [f"Output verification failed: {error}"])
 
-        media = self.media_service.get_media(output_path)
-
-        validation = self.validation_service.validate(media)
-
-        return validation.is_valid
+        if not verification.is_valid:
+            return verification
+        return self.validation_service.validate(output)
 
     def process_file(
         self,
@@ -68,21 +77,43 @@ class ConversionService:
 
         if plan.compatible:
             self.logger.info(f"Already compatible: {file_path.name}")
+            destination = output_path if output_path is not None else file_path
+            # A byte-for-byte copy must retain all source tracks, even when
+            # the conversion settings select only a subset.
+            copy_job = ConversionJob(
+                audio_tracks=media.audio_tracks,
+                include_subtitles=bool(media.subtitle_tracks),
+                subtitle_tracks=media.subtitle_tracks,
+            )
+            if destination != file_path:
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                existing = self._validate_output(media, destination, copy_job)
+                if not existing.is_valid:
+                    self.logger.info(
+                        f"Output requires copy: {destination} - "
+                        + "; ".join(existing.errors)
+                    )
+                    try:
+                        copy2(file_path, destination)
+                    except Exception as error:
+                        self.logger.error(f"Copy failed: {destination} - {error}")
+                        return ProcessResult(
+                            success=False, input_path=file_path,
+                            output_path=destination, error=str(error),
+                        )
 
-            if output_path is not None and output_path != file_path:
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-
-                if (
-                    not output_path.exists()
-                    or not self._is_output_valid(output_path)
-                ):
-                    copy2(file_path, output_path)
-
+            checked = self._validate_output(media, destination, copy_job)
+            if not checked.is_valid:
+                self.logger.error(
+                    f"Output validation failed: {destination} - "
+                    + "; ".join(checked.errors)
+                )
             return ProcessResult(
-                success=True,
-                skipped=True,
+                success=checked.is_valid,
+                skipped=checked.is_valid,
                 input_path=file_path,
                 output_path=output_path,
+                error="\n".join(checked.errors) or None,
             )
 
         try:
@@ -112,7 +143,8 @@ class ConversionService:
                 f"Output already exists: {output_file.output_path}"
             )
 
-            if self._is_output_valid(output_file.output_path):
+            checked = self._validate_output(media, output_file.output_path, job)
+            if checked.is_valid:
                 self.logger.info(
                     f"Output already valid: {output_file.output_path}"
                 )
@@ -125,7 +157,8 @@ class ConversionService:
                 )
 
             self.logger.info(
-                f"Output requires rebuild: {output_file.output_path}"
+                f"Output requires rebuild: {output_file.output_path} - "
+                + "; ".join(checked.errors)
             )
 
         self.logger.info(f"Conversion started: {file_path.name}")
@@ -144,23 +177,20 @@ class ConversionService:
 
         if return_code == 0:
 
-            media = self.media_service.get_media(
-                output_file.output_path
-            )
-
-            validation = self.validation_service.validate(
-                media
+            validation = self._validate_output(
+                media, output_file.output_path, job,
             )
 
             if not validation.is_valid:
 
                 self.logger.error(
-                    f"Output validation failed: {output_file.output_path.name}"
+                    f"Output validation failed: {output_file.output_path.name} - "
+                    + "; ".join(validation.errors)
                 )
 
                 monitor.append_log("")
                 monitor.append_log("=" * 80)
-                monitor.append_log("WEBSAFE VALIDATION FAILED")
+                monitor.append_log("OUTPUT VALIDATION FAILED")
                 monitor.append_log("=" * 80)
 
                 for error in validation.errors:

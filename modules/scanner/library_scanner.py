@@ -8,6 +8,7 @@ from core.models.episode_info import EpisodeInfo
 SUPPORTED_EXTENSIONS = {
     ".mkv",
     ".mp4",
+    ".m4v",
     ".avi",
     ".mov",
     ".wmv",
