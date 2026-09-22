@@ -73,7 +73,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
 
-        self.setWindowTitle("R.I.T.M.O. Media Engine v1.1.0")
+        self.setWindowTitle("R.I.T.M.O. Media Engine v1.1.1")
         self.resize(1200, 800)
         self.setMinimumSize(900, 600)
 

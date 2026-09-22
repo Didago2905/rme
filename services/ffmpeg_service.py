@@ -33,6 +33,7 @@ class FFmpegService:
             command,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             **self._subprocess_kwargs(),
         )
 
