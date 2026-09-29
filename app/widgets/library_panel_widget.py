@@ -15,7 +15,6 @@ from app.themes.buttons import apply_primary_button
 
 
 class LibraryPanelWidget(QWidget):
-    scan_requested = Signal(str)
     import_series_requested = Signal(str)
     media_library_changed = Signal(str)
 
@@ -92,19 +91,6 @@ class LibraryPanelWidget(QWidget):
             destination_button
         )
 
-        self.scan_button = QPushButton(
-            "Scan Library"
-        )
-        apply_primary_button(
-            self.scan_button
-        )
-        self.scan_button.setToolTip(
-            "Analyze the selected media library."
-        )
-        self.scan_button.clicked.connect(
-            self._scan_library
-        )
-
         self.import_series_button = QPushButton(
             "Import Media"
         )
@@ -122,7 +108,6 @@ class LibraryPanelWidget(QWidget):
         layout.addLayout(folder_layout)
         layout.addWidget(destination_label)
         layout.addLayout(destination_layout)
-        layout.addWidget(self.scan_button)
         layout.addWidget(self.import_series_button)
 
     def set_media_library_path(
@@ -150,10 +135,6 @@ class LibraryPanelWidget(QWidget):
             )
 
             self.import_series_button.setEnabled(
-                False
-            )
-
-            self.scan_button.setEnabled(
                 False
             )
 
@@ -200,21 +181,9 @@ class LibraryPanelWidget(QWidget):
             self._selected_path()
         )
 
-        self.scan_button.setEnabled(
-            has_folder
-        )
-
         self.import_series_button.setEnabled(
             has_folder
         )
-
-    def _scan_library(self) -> None:
-        library_path = self._selected_path()
-
-        if library_path:
-            self.scan_requested.emit(
-                library_path
-            )
 
     def _import_series(self) -> None:
         series_path = self._selected_path()

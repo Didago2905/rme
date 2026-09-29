@@ -2,13 +2,20 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QSettings, QThread, Signal
 from PySide6.QtWidgets import (
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
+    QPushButton,
     QSplitter,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from app.themes.buttons import apply_primary_button
 from app.use_cases.import_series_use_case import ImportSeriesUseCase
 from app.use_cases.scan_library import ScanLibraryUseCase
 from app.widgets.control_console_widget import ControlConsoleWidget
@@ -19,6 +26,7 @@ from core.models.media_item import MediaItem
 from modules.scanner.library_scanner import SUPPORTED_EXTENSIONS
 from core.models.parsed_episode import ParsedEpisode
 from core.models.process_result import ProcessResult
+from core.models.scan_result import ScanResult, ScanRoot
 from core.utils.media_library_name import build_episode_filename
 from services.conversion_service import ConversionService
 from core.models.ffmpeg_progress import FFmpegProgress
@@ -69,15 +77,33 @@ class ConversionWorker(QThread):
         self.result_ready.emit(self._media_item, result)
 
 
+class LibraryScanWorker(QThread):
+    def __init__(self, use_case: ScanLibraryUseCase, roots: list[ScanRoot]) -> None:
+        super().__init__()
+        self._use_case = use_case
+        self._roots = roots
+        self.result: ScanResult | None = None
+        self.error: str | None = None
+
+    def run(self) -> None:
+        try:
+            self.result = self._use_case.execute(self._roots)
+        except Exception as error:
+            self.error = str(error) or type(error).__name__
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
 
-        self.setWindowTitle("R.I.T.M.O. Media Engine v1.1.1")
+        self.setWindowTitle("R.I.T.M.O. Media Engine v1.1.2")
         self.resize(1200, 800)
         self.setMinimumSize(900, 600)
 
         self._conversion_worker: ConversionWorker | None = None
+        self._library_scan_worker: LibraryScanWorker | None = None
+        self._library_scan_result: ScanResult | None = None
+        self._close_after_library_scan = False
         self._active_series_name = ""
         self._settings = QSettings("RITMO", "RME")
 
@@ -111,6 +137,51 @@ class MainWindow(QMainWindow):
         self.control_console = ControlConsoleWidget()
         self.conversion_setup = ConversionSetupWidget()
 
+        self.tabs = QTabWidget()
+
+        self.import_tab = QWidget()
+        self.import_tab_layout = QVBoxLayout(self.import_tab)
+        self.import_tab_layout.setContentsMargins(0, 0, 0, 0)
+        self.import_tab_layout.setSpacing(10)
+
+        self.library_tab = QWidget()
+        self.library_tab_layout = QVBoxLayout(self.library_tab)
+        self.library_tab_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.library_title = QLabel("Media Library")
+        self.library_scan_button = QPushButton("Scan Library")
+        apply_primary_button(self.library_scan_button)
+        self.library_primary_path = QLineEdit(
+            self._settings.value("library_primary_path", r"D:\Media", type=str)
+        )
+        self.library_primary_path.setReadOnly(True)
+        self.library_primary_browse = QPushButton("Browse...")
+        primary_row = QHBoxLayout()
+        primary_row.addWidget(QLabel("Primary"))
+        primary_row.addWidget(self.library_primary_path)
+        primary_row.addWidget(self.library_primary_browse)
+
+        self.library_optional_path = QLineEdit(
+            self._settings.value("library_optional_path", r"E:\Media", type=str)
+        )
+        self.library_optional_path.setReadOnly(True)
+        self.library_optional_browse = QPushButton("Browse...")
+        optional_row = QHBoxLayout()
+        optional_row.addWidget(QLabel("Optional"))
+        optional_row.addWidget(self.library_optional_path)
+        optional_row.addWidget(self.library_optional_browse)
+        self.library_status_label = QLabel("Library not scanned.")
+
+        self.library_tab_layout.addWidget(self.library_title)
+        self.library_tab_layout.addWidget(self.library_scan_button)
+        self.library_tab_layout.addLayout(primary_row)
+        self.library_tab_layout.addLayout(optional_row)
+        self.library_tab_layout.addWidget(self.library_status_label)
+        self.library_tab_layout.addStretch()
+
+        self.tabs.addTab(self.import_tab, "Import / Convert")
+        self.tabs.addTab(self.library_tab, "Library")
+
         self.workspace = QSplitter(Qt.Orientation.Horizontal)
         self.workspace.setChildrenCollapsible(False)
 
@@ -124,15 +195,20 @@ class MainWindow(QMainWindow):
 
         self.workspace.setSizes([320, 360, 520])
 
-        self.main_layout.addWidget(self.header)
-        self.main_layout.addWidget(self.library_panel)
-        self.main_layout.addWidget(
+        self.import_tab_layout.addWidget(self.library_panel)
+        self.import_tab_layout.addWidget(
             self.workspace,
             1,
         )
 
+
+        self.main_layout.addWidget(self.header)
+        self.main_layout.addWidget(self.tabs, 1)
+
     def _connect_signals(self) -> None:
-        self.library_panel.scan_requested.connect(self._scan_library)
+        self.library_scan_button.clicked.connect(self._start_library_scan)
+        self.library_primary_browse.clicked.connect(self._browse_library_primary)
+        self.library_optional_browse.clicked.connect(self._browse_library_optional)
 
         self.library_panel.import_series_requested.connect(self._import_series)
 
@@ -146,6 +222,83 @@ class MainWindow(QMainWindow):
 
         self.control_console.start_requested.connect(self._start_queue)
 
+    def _browse_library_primary(self) -> None:
+        path = QFileDialog.getExistingDirectory(
+            self, "Select Primary Library Root", self.library_primary_path.text(),
+        )
+        if path:
+            self.library_primary_path.setText(path)
+            self._settings.setValue("library_primary_path", path)
+
+    def _browse_library_optional(self) -> None:
+        path = QFileDialog.getExistingDirectory(
+            self, "Select Optional Library Root", self.library_optional_path.text(),
+        )
+        if path:
+            self.library_optional_path.setText(path)
+            self._settings.setValue("library_optional_path", path)
+
+    def _start_library_scan(self) -> None:
+        if self._library_scan_worker is not None:
+            return
+
+        self.library_scan_button.setEnabled(False)
+        self.library_status_label.setText("Scanning library...")
+        roots = [
+            ScanRoot(root_id="primary", path=Path(self.library_primary_path.text())),
+            ScanRoot(root_id="optional", path=Path(self.library_optional_path.text())),
+        ]
+        self._library_scan_worker = LibraryScanWorker(self.scan_library_use_case, roots)
+        self._library_scan_worker.finished.connect(self._on_library_scan_finished)
+        self._library_scan_worker.start()
+
+    def _on_library_scan_finished(self) -> None:
+        worker = self._library_scan_worker
+        if worker is None:
+            return
+
+        if worker.result is not None:
+            self._library_scan_result = worker.result
+            result = self._library_scan_result
+            movie_count = sum(item.category == "movie" for item in result.items)
+            episode_count = sum(item.category == "series" for item in result.items)
+            series_names = {
+                item.relative_path.parts[1]
+                for item in result.items
+                if item.category == "series"
+                and len(item.relative_path.parts) >= 3
+                and item.relative_path.parts[0] == "Series"
+            }
+            self.library_status_label.setText(
+                f"Total media files: {len(result.items)}; "
+                f"Movies: {movie_count}; "
+                f"Series: {len(series_names)}; "
+                f"Episodes: {episode_count}; "
+                f"Anomalies: {len(result.anomalies)}"
+            )
+        else:
+            error = " ".join((worker.error or "Unknown error").split())[:200]
+            self.library_status_label.setText(f"Library scan failed: {error}")
+
+        worker.deleteLater()
+        self._library_scan_worker = None
+        self.library_scan_button.setEnabled(True)
+        if self._close_after_library_scan:
+            self._close_after_library_scan = False
+            self.close()
+
+    def closeEvent(self, event) -> None:
+        # Keep the window and worker alive until the scan finishes, without
+        # blocking the GUI thread or terminating an in-flight ffprobe process.
+        if self._library_scan_worker is not None:
+            self._close_after_library_scan = True
+            event.ignore()
+            return
+        if self._conversion_worker is not None:
+            event.ignore()
+            return
+        super().closeEvent(event)
+
     def _save_media_library_path(
         self,
         library_path: str,
@@ -154,16 +307,6 @@ class MainWindow(QMainWindow):
             "media_library_path",
             library_path,
         )
-
-    def _scan_library(
-        self,
-        library_path: str,
-    ) -> None:
-        metadata = self.scan_library_use_case.execute(library_path)
-
-        self.header.set_active_library(Path(library_path).name)
-
-        print(metadata)
 
     def _import_series(
         self,

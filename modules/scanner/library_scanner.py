@@ -1,4 +1,6 @@
 from pathlib import Path
+from collections.abc import Callable, Iterator
+from typing import Literal
 
 from core.models.series_info import SeriesInfo
 from core.models.season_info import SeasonInfo
@@ -16,6 +18,50 @@ SUPPORTED_EXTENSIONS = {
 
 
 class LibraryScanner:
+
+    def discover_media_root(
+        self,
+        root_path: Path,
+        on_error: Callable[[Path, OSError], None],
+    ) -> Iterator[tuple[Literal["movie", "series"], Path]]:
+        """Discover Movies/ and Series/, reporting incomplete traversal.
+
+        Missing categories are allowed; root access errors propagate.
+        Directory symlinks are not followed to avoid traversal cycles.
+        """
+        entries = {entry.name: entry for entry in root_path.iterdir()}
+
+        def walk(directory: Path) -> Iterator[Path]:
+            try:
+                children = sorted(directory.iterdir())
+            except OSError as error:
+                on_error(directory, error)
+                return
+            for child in children:
+                try:
+                    if child.is_dir():
+                        if not child.is_symlink():
+                            yield from walk(child)
+                    elif child.is_file() and child.suffix.lower() in SUPPORTED_EXTENSIONS:
+                        yield child
+                except OSError as error:
+                    on_error(child, error)
+
+        categories: tuple[tuple[str, Literal["movie", "series"]], ...] = (
+            ("Movies", "movie"), ("Series", "series"),
+        )
+        for name, category in categories:
+            directory = entries.get(name)
+            if directory is None:
+                continue
+            try:
+                if not directory.is_dir() or directory.is_symlink():
+                    raise OSError(f"Expected a regular category directory: {directory}")
+            except OSError as error:
+                on_error(directory, error)
+                continue
+            for path in walk(directory):
+                yield category, path
 
     def scan(
         self,
