@@ -17,6 +17,7 @@ class Converter:
         file_path: Path,
         job: ConversionJob,
         output_path: Path | None = None,
+        overwrite: bool = False,
     ) -> list[str]:
 
         try:
@@ -29,6 +30,8 @@ class Converter:
 
             command = [
                 "ffmpeg",
+                "-nostdin",
+                "-y" if overwrite else "-n",
                 "-progress",
                 "pipe:2",
                 "-nostats",
@@ -41,7 +44,7 @@ class Converter:
                 command.extend(
                     [
                         "-map",
-                        "0:v",
+                        "0:V:0" if job.single_main_video else "0:v",
                     ]
                 )
 
@@ -321,6 +324,7 @@ class Converter:
             ]
             | None
         ) = None,
+        overwrite: bool = False,
     ) -> int:
 
         print("9 - inside converter.execute")
@@ -336,6 +340,7 @@ class Converter:
             file_path,
             job,
             output_path,
+            overwrite=overwrite,
         )
 
         if monitor is not None:
@@ -360,6 +365,7 @@ class Converter:
 
         process = subprocess.Popen(
             command,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             text=True,

@@ -39,3 +39,6 @@ class ConversionJob:
     subtitle_tracks: list[SubtitleTrack] | None = None
 
     default_audio_track: AudioTrack | None = None
+
+    # False preserves all-video verification for byte-for-byte copy jobs.
+    single_main_video: bool = False

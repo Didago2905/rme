@@ -69,6 +69,24 @@ class OutputVerifierTests(unittest.TestCase):
         output = replace(self.output, subtitle_tracks=[])
         self.assertTrue(self.verifier.verify(self.source, output, self.job).is_valid)
 
+    def test_single_main_video_accepts_one_of_two_source_video_tracks(self):
+        source = replace(self.source, video_tracks=[object(), object()])
+        job = replace(self.job, single_main_video=True)
+        self.assertTrue(self.verifier.verify(source, self.output, job).is_valid)
+        missing = replace(self.output, video_tracks=[])
+        self.assertFalse(self.verifier.verify(source, missing, job).is_valid)
+        disabled = replace(job, include_video=False)
+        self.assertTrue(self.verifier.verify(source, missing, disabled).is_valid)
+
+    def test_copy_default_still_requires_all_source_video_tracks(self):
+        source = replace(self.source, video_tracks=[object(), object()])
+        self.assertFalse(self.job.single_main_video)
+        result = self.verifier.verify(source, self.output, self.job)
+        self.assertFalse(result.is_valid)
+        self.assertIn("Missing video tracks: expected at least 2, found 1.", result.errors)
+        complete = replace(self.output, video_tracks=list(source.video_tracks))
+        self.assertTrue(self.verifier.verify(source, complete, self.job).is_valid)
+
 
 if __name__ == "__main__":
     unittest.main()

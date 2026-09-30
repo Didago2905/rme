@@ -42,7 +42,7 @@ class ConversionServiceTests(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def execute(self, *args):
+    def execute(self, *args, **kwargs):
         self.output_path.write_bytes(b"output")
         return 0
 
@@ -54,6 +54,7 @@ class ConversionServiceTests(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertFalse(result.skipped)
         self.assertEqual(self.service.validation_service.validate.call_count, 2)
+        self.assertIs(self.service.converter.execute.call_args.kwargs["overwrite"], False)
 
     def test_zero_exit_truncation_fails_before_websafe(self):
         self.output.duration_seconds = 840
@@ -74,7 +75,7 @@ class ConversionServiceTests(unittest.TestCase):
         for mode in ["missing", "empty", "unreadable"]:
             with self.subTest(mode=mode):
                 self.output_path.unlink(missing_ok=True)
-                self.service.converter.execute.side_effect = lambda *args: 0
+                self.service.converter.execute.side_effect = lambda *args, **kwargs: 0
                 if mode != "missing":
                     self.output_path.write_bytes(b"data" if mode == "unreadable" else b"")
                 if mode == "unreadable":
@@ -92,19 +93,23 @@ class ConversionServiceTests(unittest.TestCase):
         result = self.run_conversion()
         self.assertTrue(result.success and result.skipped)
         self.service.converter.execute.assert_not_called()
+        self.assertEqual(self.output_path.read_bytes(), b"output")
 
     def test_existing_truncated_rebuild_must_pass(self):
         self.output_path.write_bytes(b"output")
         self.output.duration_seconds = 840
         self.assertFalse(self.run_conversion().success)
         self.service.converter.execute.assert_called_once()
+        self.assertIs(self.service.converter.execute.call_args.kwargs["overwrite"], True)
 
     def test_existing_truncated_rebuild_can_succeed(self):
         self.output_path.write_bytes(b"output")
         self.output.duration_seconds = 840
-        def rebuild(*args):
+        def rebuild(*args, **kwargs):
+            self.assertEqual(self.output_path.read_bytes(), b"output")
+            self.assertIs(kwargs["overwrite"], True)
             self.output.duration_seconds = 5520
-            return self.execute(*args)
+            return self.execute(*args, **kwargs)
         self.service.converter.execute.side_effect = rebuild
         result = self.run_conversion()
         self.assertTrue(result.success)

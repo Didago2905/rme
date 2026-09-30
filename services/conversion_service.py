@@ -138,6 +138,7 @@ class ConversionService:
             output_path,
         )
 
+        overwrite = False
         if output_file.exists:
             self.logger.info(
                 f"Output already exists: {output_file.output_path}"
@@ -160,6 +161,7 @@ class ConversionService:
                 f"Output requires rebuild: {output_file.output_path} - "
                 + "; ".join(checked.errors)
             )
+            overwrite = True
 
         self.logger.info(f"Conversion started: {file_path.name}")
 
@@ -173,6 +175,7 @@ class ConversionService:
             output_file.output_path,
             monitor,
             on_progress,
+            overwrite=overwrite,
         )
 
         if return_code == 0:

@@ -96,6 +96,7 @@ class ConversionJobBuilder:
 
             # Streams
             include_video=True,
+            single_main_video=True,
             include_audio=True,
             include_subtitles=bool(
                 subtitle_tracks

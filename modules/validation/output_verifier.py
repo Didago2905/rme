@@ -28,11 +28,13 @@ class OutputVerifier:
                     f"output={durations[1]}s, tolerance={tolerance}s."
                 )
 
-        # Match Converter's mapping: all video, selected audio (or all),
+        # Match Converter's video policy, selected audio (or all),
         # and only explicitly selected subtitles. Output indices can change.
+        expected_video = 0
+        if job.include_video:
+            expected_video = 1 if job.single_main_video else len(source.video_tracks)
         expected = (
-            ("video", len(source.video_tracks) if job.include_video else 0,
-             len(output.video_tracks)),
+            ("video", expected_video, len(output.video_tracks)),
             ("audio", len(job.audio_tracks or source.audio_tracks)
              if job.include_audio else 0, len(output.audio_tracks)),
             ("subtitle", len(job.subtitle_tracks or [])
