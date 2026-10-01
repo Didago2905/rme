@@ -2,6 +2,7 @@ from pathlib import Path
 from shutil import copy2
 
 from core.constants.paths import LOGS_DIR
+from core.specifications.websafe import WEBSAFE_SPEC
 from core.models.process_result import ProcessResult
 from core.models.conversion_job import ConversionJob
 from core.models.media_item import MediaItem
@@ -35,6 +36,16 @@ class ConversionService:
         self.converter = Converter()
         self.logger = LoggerService() 
 
+    def prepare_current(self) -> None:
+        self.converter.prepare_current()
+
+    def cancel_current(self) -> None:
+        self.converter.cancel_current()
+
+    @property
+    def cancelled(self) -> bool:
+        return self.converter.cancelled
+
     def _validate_output(
         self, source: MediaItem, output_path: Path, job: ConversionJob,
     ) -> ValidationResult:
@@ -59,10 +70,21 @@ class ConversionService:
             
     ) -> ProcessResult:
 
+        def cancelled_result() -> ProcessResult:
+            return ProcessResult(
+                success=False, input_path=file_path, output_path=output_path,
+                cancelled=True,
+            )
+
+        if self.cancelled:
+            return cancelled_result()
+
         self.logger.info(f"Processing file: {file_path.name}")
         print("1 - process_file")
 
         media = self.media_service.get_media(file_path)
+        if self.cancelled:
+            return cancelled_result()
         print("2 - media loaded")
 
         validation = self.validation_service.validate(media)
@@ -72,15 +94,37 @@ class ConversionService:
             media,
             validation,
         )
+        if self.cancelled:
+            return cancelled_result()
 
         print("4 - planning")
 
-        if plan.compatible:
+        try:
+            print("5 - building job")
+            job = self.conversion_job_builder.build(
+                media,
+                plan,
+                conversion_settings,
+                video_encoder=(conversion_settings or {}).get("video_encoder", "libx264"),
+            )
+            print("6 - job created")
+        except Exception as e:
+            self.logger.error(
+                f"Failed to build conversion job: {file_path.name} - {e}"
+            )
+            raise
+
+        if (
+            plan.compatible and conversion_settings is None
+            and all(track.codec.lower() in WEBSAFE_SPEC["audio_codecs"] for track in media.audio_tracks)
+            and all(track.codec.lower() == "mov_text" for track in media.subtitle_tracks)
+        ):
             self.logger.info(f"Already compatible: {file_path.name}")
             destination = output_path if output_path is not None else file_path
             # A byte-for-byte copy must retain all source tracks, even when
             # the conversion settings select only a subset.
             copy_job = ConversionJob(
+                verify_composition=True,
                 audio_tracks=media.audio_tracks,
                 include_subtitles=bool(media.subtitle_tracks),
                 subtitle_tracks=media.subtitle_tracks,
@@ -88,6 +132,8 @@ class ConversionService:
             if destination != file_path:
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 existing = self._validate_output(media, destination, copy_job)
+                if self.cancelled:
+                    return cancelled_result()
                 if not existing.is_valid:
                     self.logger.info(
                         f"Output requires copy: {destination} - "
@@ -103,6 +149,8 @@ class ConversionService:
                         )
 
             checked = self._validate_output(media, destination, copy_job)
+            if self.cancelled:
+                return cancelled_result()
             if not checked.is_valid:
                 self.logger.error(
                     f"Output validation failed: {destination} - "
@@ -116,20 +164,6 @@ class ConversionService:
                 error="\n".join(checked.errors) or None,
             )
 
-        try:
-            print("5 - building job")
-            job = self.conversion_job_builder.build(
-                media,
-                plan,
-                conversion_settings,
-            )
-            print("6 - job created")
-        except Exception as e:
-            self.logger.error(
-                f"Failed to build conversion job: {file_path.name} - {e}"
-            )
-            raise
-
         print("7 - output file")
 
         output_file = self.converter.build_output_file(
@@ -139,12 +173,16 @@ class ConversionService:
         )
 
         overwrite = False
+        if self.cancelled:
+            return cancelled_result()
         if output_file.exists:
             self.logger.info(
                 f"Output already exists: {output_file.output_path}"
             )
 
             checked = self._validate_output(media, output_file.output_path, job)
+            if self.cancelled:
+                return cancelled_result()
             if checked.is_valid:
                 self.logger.info(
                     f"Output already valid: {output_file.output_path}"
@@ -177,12 +215,19 @@ class ConversionService:
             on_progress,
             overwrite=overwrite,
         )
+        if self.cancelled:
+            return ProcessResult(
+                success=False, input_path=file_path,
+                output_path=output_file.output_path, cancelled=True,
+            )
 
         if return_code == 0:
 
             validation = self._validate_output(
                 media, output_file.output_path, job,
             )
+            if self.cancelled:
+                return cancelled_result()
 
             if not validation.is_valid:
 

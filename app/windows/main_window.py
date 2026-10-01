@@ -51,6 +51,8 @@ class ConversionWorker(QThread):
         self._media_item = media_item
         self._output_path = output_path
         self._conversion_settings = conversion_settings
+        self.result: ProcessResult | None = None
+        self._conversion_service.prepare_current()
 
     def _on_progress(
         self,
@@ -74,6 +76,12 @@ class ConversionWorker(QThread):
                 error=str(error),
             )
 
+        if self._conversion_service.cancelled:
+            result = ProcessResult(
+                success=False, input_path=self._media_item.path,
+                output_path=self._output_path, cancelled=True,
+            )
+        self.result = result
         self.result_ready.emit(self._media_item, result)
 
 
@@ -96,7 +104,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
 
-        self.setWindowTitle("R.I.T.M.O. Media Engine v1.1.3")
+        self.setWindowTitle("R.I.T.M.O. Media Engine v1.1.4")
         self.resize(1200, 800)
         self.setMinimumSize(900, 600)
 
@@ -104,6 +112,9 @@ class MainWindow(QMainWindow):
         self._library_scan_worker: LibraryScanWorker | None = None
         self._library_scan_result: ScanResult | None = None
         self._close_after_library_scan = False
+        self._queue_running = False
+        self._queue_stopped_by_cancel = False
+        self._close_pending = False
         self._active_series_name = ""
         self._settings = QSettings("RITMO", "RME")
 
@@ -221,6 +232,7 @@ class MainWindow(QMainWindow):
         self.import_preview.queue_requested.connect(self._add_selected_to_queue)
 
         self.control_console.start_requested.connect(self._start_queue)
+        self.control_console.cancel_requested.connect(self._cancel_conversion)
 
     def _browse_library_primary(self) -> None:
         path = QFileDialog.getExistingDirectory(
@@ -286,15 +298,17 @@ class MainWindow(QMainWindow):
         if self._close_after_library_scan:
             self._close_after_library_scan = False
             self.close()
+        elif self._close_pending and self._conversion_worker is None:
+            self.close()
 
     def closeEvent(self, event) -> None:
         # Keep the window and worker alive until the scan finishes, without
         # blocking the GUI thread or terminating an in-flight ffprobe process.
-        if self._library_scan_worker is not None:
-            self._close_after_library_scan = True
-            event.ignore()
-            return
-        if self._conversion_worker is not None:
+        if self._library_scan_worker is not None or self._conversion_worker is not None:
+            self._close_pending = True
+            self._queue_running = False
+            if self._conversion_worker is not None:
+                self._cancel_conversion()
             event.ignore()
             return
         super().closeEvent(event)
@@ -418,12 +432,15 @@ class MainWindow(QMainWindow):
 
     def _start_queue(self) -> None:
 
-        if self._conversion_worker is not None:
+        if self._conversion_worker is not None or self._close_pending:
             return
+        self._queue_running = True
+        self._queue_stopped_by_cancel = False
 
         media_item = self.control_console.next_queued_media_item()
 
         if media_item is None:
+            self._queue_running = False
             return
 
         output_path = self.control_console.output_path_for(media_item)
@@ -441,6 +458,7 @@ class MainWindow(QMainWindow):
         )
 
         self._conversion_worker.result_ready.connect(self._on_conversion_finished)
+        self._conversion_worker.finished.connect(self._on_conversion_thread_finished)
 
         self._conversion_worker.progress_updated.connect(self._on_conversion_progress)
 
@@ -451,7 +469,7 @@ class MainWindow(QMainWindow):
         progress: FFmpegProgress,
     ) -> None:
 
-        if self._conversion_worker is None:
+        if self._conversion_worker is None or self._queue_stopped_by_cancel:
             return
 
         media_file = self._conversion_worker._media_item
@@ -468,14 +486,36 @@ class MainWindow(QMainWindow):
         result: ProcessResult,
     ) -> None:
 
-        self.control_console.mark_result(
-            media_item,
-            result,
-        )
-
+        # Result publication does not imply that QThread.run has returned.
         if self._conversion_worker is not None:
-            self._conversion_worker.deleteLater()
-            self._conversion_worker = None
+            self._conversion_worker.result = result
 
-        if self.control_console.next_queued_media_item() is not None:
+    def _cancel_conversion(self) -> None:
+        self._queue_running = False
+        self._queue_stopped_by_cancel = True
+        if self._conversion_worker is not None:
+            self.control_console.mark_cancelling()
+            self.conversion_service.cancel_current()
+
+    def _on_conversion_thread_finished(self) -> None:
+        worker = self._conversion_worker
+        if worker is None:
+            return
+        result = worker.result
+        if self._queue_stopped_by_cancel:
+            result = ProcessResult(
+                success=False, input_path=worker._media_item.path,
+                output_path=worker._output_path, cancelled=True,
+            )
+        if result is None:
+            result = ProcessResult(success=False, error="Conversion worker returned no result.")
+        self.control_console.mark_result(worker._media_item, result)
+        worker.deleteLater()
+        self._conversion_worker = None
+        self.control_console.finish_current()
+        if self._close_pending:
+            if self._library_scan_worker is None:
+                self.close()
+            return
+        if self._queue_running and not self._queue_stopped_by_cancel:
             self._start_queue()

@@ -26,12 +26,14 @@ from core.models.ffmpeg_progress import FFmpegProgress
 
 class ControlConsoleWidget(QWidget):
     start_requested = Signal()
+    cancel_requested = Signal()
 
     def __init__(self) -> None:
         super().__init__()
 
         self._queue: list[dict[str, object]] = []
         self._is_running = False
+        self._is_cancelling = False
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -70,10 +72,14 @@ class ControlConsoleWidget(QWidget):
         self.queue_list = QListWidget()
         self.queue_summary = QLabel("Empty queue")
         self.start_button = QPushButton("Start Queue")
+        self.cancel_button = QPushButton("Cancel Conversion")
         self.clear_button = QPushButton("Clear Queue")
         self.remove_selected_button = QPushButton("Remove Selected")
 
         apply_primary_button(self.start_button)
+        apply_primary_button(self.cancel_button)
+        self.cancel_button.setEnabled(False)
+        self.cancel_button.clicked.connect(self.cancel_requested.emit)
 
         self.start_button.setEnabled(False)
         self.clear_button.setEnabled(False)
@@ -106,6 +112,7 @@ class ControlConsoleWidget(QWidget):
         queue_layout.addWidget(
             self.start_button
         )
+        queue_layout.addWidget(self.cancel_button)
 
         queue_layout.addWidget(
             self.remove_selected_button
@@ -308,6 +315,7 @@ class ControlConsoleWidget(QWidget):
     ) -> None:
 
         self._is_running = True
+        self._is_cancelling = False
 
         self._set_state(
             media_item,
@@ -372,7 +380,10 @@ class ControlConsoleWidget(QWidget):
         result: ProcessResult,
     ) -> None:
 
-        if result.success and result.skipped:
+        if result.cancelled:
+            state = "Cancelled"
+
+        elif result.success and result.skipped:
             state = "Skipped"
 
         elif result.success:
@@ -380,8 +391,6 @@ class ControlConsoleWidget(QWidget):
 
         else:
             state = "Failed"
-
-        self._is_running = False
 
         self._set_state(
             media_item,
@@ -413,6 +422,16 @@ class ControlConsoleWidget(QWidget):
             "0 / 0"
         )
 
+        self._refresh_queue()
+
+    def mark_cancelling(self) -> None:
+        self._is_cancelling = True
+        self.activity_state.setText("Cancelling")
+        self._refresh_queue()
+
+    def finish_current(self) -> None:
+        self._is_running = False
+        self._is_cancelling = False
         self._refresh_queue()
 
     def show_library_destination_required(
@@ -499,6 +518,7 @@ class ControlConsoleWidget(QWidget):
         skipped = 0
         failed = 0
         queued = 0
+        cancelled = 0
 
         for entry in self._queue:
 
@@ -530,6 +550,8 @@ class ControlConsoleWidget(QWidget):
 
             elif state == "Queued":
                 queued += 1
+            elif state == "Cancelled":
+                cancelled += 1
 
         total = len(
             self._queue
@@ -539,6 +561,7 @@ class ControlConsoleWidget(QWidget):
             completed
             + skipped
             + failed
+            + cancelled
         )
 
         self.queue_summary.setText(
@@ -551,6 +574,7 @@ class ControlConsoleWidget(QWidget):
             queued > 0
             and not self._is_running
         )
+        self.cancel_button.setEnabled(self._is_running and not self._is_cancelling)
 
         self.clear_button.setEnabled(
             any(
@@ -639,6 +663,7 @@ class ControlConsoleWidget(QWidget):
             "Completed": "#16A34A",
             "Skipped": "#D97706",
             "Failed": "#DC2626",
+            "Cancelled": "#6B7280",
         }
 
         for entry in self._queue:

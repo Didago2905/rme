@@ -3,6 +3,8 @@ from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from core.models.subtitle_track import SubtitleTrack
+from core.models.media_language import MediaLanguage
 from core.models.conversion_job import ConversionJob
 from core.models.media_item import MediaItem
 from modules.validation.output_verifier import OutputVerifier
@@ -77,6 +79,49 @@ class OutputVerifierTests(unittest.TestCase):
         self.assertFalse(self.verifier.verify(source, missing, job).is_valid)
         disabled = replace(job, include_video=False)
         self.assertTrue(self.verifier.verify(source, missing, disabled).is_valid)
+
+    def subtitle(self, index, language, default=False, forced=False):
+        return SubtitleTrack(index, "mov_text", MediaLanguage(language), "", default, forced)
+
+    def check_subtitles(self, requested, actual, container="mp4"):
+        job = replace(self.job, include_subtitles=True, subtitle_tracks=requested,
+                      audio_tracks=[], include_audio=False, verify_composition=True)
+        output = replace(self.output, container=container, audio_tracks=[], subtitle_tracks=actual)
+        return self.verifier.verify(self.source, output, job).is_valid
+
+    def test_mp4_single_forced_normalizes_default(self):
+        track = self.subtitle(4, "spa", forced=True)
+        self.assertTrue(self.check_subtitles([track], [replace(track, default=True)]))
+        self.assertFalse(self.check_subtitles([track], [track]))
+
+    def test_mp4_two_subtitles_normalize_only_first(self):
+        for first_forced in (True, False):
+            requested = [self.subtitle(4, "spa", forced=first_forced),
+                         self.subtitle(5, "eng", forced=not first_forced)]
+            actual = [replace(requested[0], default=True), requested[1]]
+            self.assertTrue(self.check_subtitles(requested, actual))
+            self.assertFalse(self.check_subtitles(requested, [actual[0], replace(actual[1], default=True)]))
+
+    def test_explicit_default_remains_strict(self):
+        requested = [self.subtitle(4, "spa", forced=True), self.subtitle(5, "eng", default=True)]
+        self.assertTrue(self.check_subtitles(requested, requested))
+        self.assertFalse(self.check_subtitles(requested, [replace(requested[0], default=True), replace(requested[1], default=False)]))
+        self.assertFalse(self.check_subtitles(requested, [replace(requested[0], default=True), requested[1]]))
+
+    def test_mp4_forced_and_composition_remain_strict(self):
+        requested = [self.subtitle(4, "spa", forced=True), self.subtitle(5, "eng")]
+        actual = [replace(requested[0], default=True), requested[1]]
+        invalid = [[], actual[:1], actual + [self.subtitle(6, "jpn")],
+                   list(reversed(actual)), [replace(actual[0], forced=False), actual[1]],
+                   [replace(actual[0], codec="subrip"), actual[1]],
+                   [replace(actual[0], language=MediaLanguage("jpn")), actual[1]]]
+        for tracks in invalid:
+            self.assertFalse(self.check_subtitles(requested, tracks))
+
+    def test_other_container_preserves_requested_default(self):
+        track = self.subtitle(4, "spa", forced=True)
+        self.assertTrue(self.check_subtitles([track], [track], container="mkv"))
+        self.assertFalse(self.check_subtitles([track], [replace(track, default=True)], container="mkv"))
 
     def test_copy_default_still_requires_all_source_video_tracks(self):
         source = replace(self.source, video_tracks=[object(), object()])

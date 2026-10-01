@@ -18,3 +18,5 @@ class ProcessResult:
     output_path: Path | None = None
 
     error: str | None = None
+
+    cancelled: bool = False

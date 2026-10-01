@@ -23,6 +23,14 @@ class ConversionServiceTests(unittest.TestCase):
                                 [object()], [object()], [object()])
         self.output = MediaItem("output.mp4", self.output_path, "mp4", 5520, 6, 0,
                                 [object()], [object()], [object()])
+        audio = SimpleNamespace(stream_index=1, codec="aac", language=SimpleNamespace(code="eng"),
+                                title="", default=False, forced=False, channels=2)
+        subtitle = SimpleNamespace(stream_index=2, codec="mov_text", language=SimpleNamespace(code="eng"),
+                                   title="", default=True, forced=False)
+        self.source.audio_tracks = [audio]
+        self.output.audio_tracks = [audio]
+        self.source.subtitle_tracks = [subtitle]
+        self.output.subtitle_tracks = [subtitle]
         self.service = ConversionService.__new__(ConversionService)
         self.service.media_service = Mock()
         self.service.media_service.get_media.side_effect = lambda path: self.source if path == self.source_path else self.output
@@ -34,6 +42,7 @@ class ConversionServiceTests(unittest.TestCase):
         self.service.conversion_job_builder = Mock()
         self.service.conversion_job_builder.build.return_value = ConversionJob()
         self.service.converter = Mock()
+        self.service.converter.cancelled = False
         self.service.converter.build_output_file.side_effect = lambda *args: OutputFile(self.source_path, self.output_path, "mp4", self.output_path.exists())
         self.service.converter.execute.side_effect = self.execute
         self.service.logger = Mock()
@@ -55,6 +64,19 @@ class ConversionServiceTests(unittest.TestCase):
         self.assertFalse(result.skipped)
         self.assertEqual(self.service.validation_service.validate.call_count, 2)
         self.assertIs(self.service.converter.execute.call_args.kwargs["overwrite"], False)
+
+    def test_default_encoder_forwarded(self):
+        self.run_conversion()
+        self.assertEqual(self.service.conversion_job_builder.build.call_args.kwargs,
+                         {"video_encoder": "libx264"})
+
+    def test_explicit_nvenc_forwarded_with_track_settings(self):
+        settings = {"video_encoder": "h264_nvenc", "audio_tracks": self.source.audio_tracks,
+                    "subtitle_tracks": self.source.subtitle_tracks}
+        self.service.process_file(self.source_path, self.output_path, settings)
+        args = self.service.conversion_job_builder.build.call_args
+        self.assertIs(args.args[2], settings)
+        self.assertEqual(args.kwargs, {"video_encoder": "h264_nvenc"})
 
     def test_zero_exit_truncation_fails_before_websafe(self):
         self.output.duration_seconds = 840
@@ -180,6 +202,34 @@ class ConversionServiceTests(unittest.TestCase):
         result = self.service.process_file(self.source_path)
         self.assertFalse(result.success)
         self.assertFalse(result.skipped)
+
+    def test_cancelled_before_analysis_does_not_launch(self):
+        self.service.converter.cancelled = True
+        result = self.run_conversion()
+        self.assertTrue(result.cancelled)
+        self.assertFalse(result.success)
+        self.service.media_service.get_media.assert_not_called()
+        self.service.converter.execute.assert_not_called()
+
+    def test_cancelled_after_probe_does_not_launch(self):
+        def probe(path):
+            self.service.converter.cancelled = True
+            return self.source
+        self.service.media_service.get_media.side_effect = probe
+        self.assertTrue(self.run_conversion().cancelled)
+        self.service.converter.execute.assert_not_called()
+
+    def test_cancelled_ffmpeg_keeps_partial_output(self):
+        def cancel(*args, **kwargs):
+            self.output_path.write_bytes(b"partial")
+            self.service.converter.cancelled = True
+            return -1
+        self.service.converter.execute.side_effect = cancel
+        result = self.run_conversion()
+        self.assertTrue(result.cancelled)
+        self.assertFalse(result.success or result.skipped)
+        self.assertEqual(self.output_path.read_bytes(), b"partial")
+        self.assertEqual(self.service.validation_service.validate.call_count, 1)
 
 
 if __name__ == "__main__":

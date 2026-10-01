@@ -45,4 +45,35 @@ class OutputVerifier:
                 errors.append(
                     f"Missing {kind} tracks: expected at least {count}, found {actual}."
                 )
+        if job.verify_composition:
+            for kind, count, actual in expected:
+                if actual > count:
+                    errors.append(f"Unexpected {kind} tracks: expected {count}, found {actual}.")
+            audio = list(job.audio_tracks or source.audio_tracks) if job.include_audio else []
+            if job.default_audio_track in audio:
+                audio.remove(job.default_audio_track)
+                audio.insert(0, job.default_audio_track)
+            subtitles = list(job.subtitle_tracks or []) if job.include_subtitles else []
+            # MOV/MP4 enables the first subtitle when none is explicitly default.
+            mp4_subtitle_default = (
+                output.container.lower() == "mp4"
+                and bool(subtitles)
+                and not any(track.default for track in subtitles)
+            )
+            for kind, selected, actual, codecs in (
+                ("audio", audio, output.audio_tracks, job.audio_codecs),
+                ("subtitle", subtitles, output.subtitle_tracks, job.subtitle_codecs),
+            ):
+                for index, (track, found) in enumerate(zip(selected, actual)):
+                    codec = (codecs or {}).get(track.stream_index, "copy")
+                    wanted_codec = track.codec if codec == "copy" else codec
+                    wanted_default = (track is job.default_audio_track if kind == "audio" and codecs is not None else track.default)
+                    if kind == "subtitle" and mp4_subtitle_default:
+                        wanted_default = index == 0
+                    signature = (wanted_codec.lower(), track.language.code or "und",
+                                 wanted_default, track.forced)
+                    observed = (found.codec.lower(), found.language.code or "und",
+                                found.default, found.forced)
+                    if signature != observed or (kind == "audio" and track.channels != found.channels):
+                        errors.append(f"{kind.title()} composition mismatch at output stream {index}.")
         return ValidationResult(is_valid=not errors, errors=errors)

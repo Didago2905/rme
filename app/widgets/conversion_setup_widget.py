@@ -2,6 +2,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
+    QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -114,6 +115,15 @@ class ConversionSetupWidget(QWidget):
         panel_layout.addWidget(
             self.episodes_label
         )
+
+        encoder_row = QHBoxLayout()
+        encoder_row.addWidget(QLabel("Video encoder:"))
+        self.video_encoder_combo = QComboBox()
+        self.video_encoder_combo.addItem("CPU — libx264", "libx264")
+        self.video_encoder_combo.addItem("NVIDIA — NVENC", "h264_nvenc")
+        self.video_encoder_combo.setCurrentIndex(1)
+        encoder_row.addWidget(self.video_encoder_combo)
+        panel_layout.addLayout(encoder_row)
 
         panel_layout.addSpacing(12)
 
@@ -312,6 +322,7 @@ class ConversionSetupWidget(QWidget):
             self._audio_tracks.append(
                 track
             )
+            checkbox.toggled.connect(self._sync_audio_default)
 
         if not self._audio_checkboxes:
 
@@ -449,9 +460,24 @@ class ConversionSetupWidget(QWidget):
 
         self._subtitle_tracks.clear()
 
+    def _sync_audio_default(self) -> None:
+        buttons = self._audio_group.buttons()
+        selected = [index for index, checkbox in enumerate(self._audio_checkboxes)
+                    if checkbox.isChecked()]
+        current = next((index for index in selected if buttons[index].isChecked()), None)
+        default_index = current if current is not None else (selected[0] if selected else None)
+        # Temporarily allow no checked radio when no audio is selected.
+        self._audio_group.setExclusive(False)
+        for index, radio in enumerate(buttons):
+            radio.setEnabled(index in selected)
+            radio.setChecked(index == default_index)
+        self._audio_group.setExclusive(True)
+
     def conversion_settings(
         self,
     ) -> dict:
+
+        self._sync_audio_default()
 
         selected_audio_tracks = []
 
@@ -477,7 +503,7 @@ class ConversionSetupWidget(QWidget):
                     track
                 )
 
-            if radio.isChecked():
+            if checkbox.isChecked() and radio.isChecked():
 
                 default_audio_track = track
 
@@ -492,6 +518,7 @@ class ConversionSetupWidget(QWidget):
                 )
 
         return {
+            "video_encoder": self.video_encoder_combo.currentData(),
             "audio_tracks": selected_audio_tracks,
             "subtitle_tracks": selected_subtitle_tracks,
             "default_audio_track": default_audio_track,

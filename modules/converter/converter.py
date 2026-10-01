@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from pathlib import Path
 import subprocess
+from threading import Event, Lock
 
 from core.constants.paths import OUTPUT_DIR
 from core.models.conversion_job import ConversionJob
@@ -11,6 +12,32 @@ from modules.converter.ffmpeg_progress_parser import FFmpegProgressParser
 
 
 class Converter:
+
+    def __init__(self) -> None:
+        self._process: subprocess.Popen | None = None
+        self._process_lock = Lock()
+        self._cancel_requested = Event()
+
+    @property
+    def cancelled(self) -> bool:
+        return self._cancel_requested.is_set()
+
+    def prepare_current(self) -> None:
+        """Called before starting a new worker, never after it has started."""
+        with self._process_lock:
+            if self._process is not None:
+                raise RuntimeError("A conversion process is still active.")
+            self._cancel_requested.clear()
+
+    def cancel_current(self) -> None:
+        self._cancel_requested.set()
+        with self._process_lock:
+            process = self._process
+            if process is not None and process.poll() is None:
+                try:
+                    process.terminate()
+                except ProcessLookupError:
+                    pass
 
     def build_command(
         self,
@@ -56,6 +83,8 @@ class Converter:
                             job.target_video_codec,
                         ]
                     )
+
+                    command.extend(job.video_encoder_options)
 
                     if job.target_profile is not None:
 
@@ -168,7 +197,10 @@ class Converter:
                     ]
                 )
 
-        if job.convert_audio:
+        if job.audio_codecs is not None:
+            for index, track in enumerate(audio_tracks):
+                command.extend([f"-c:a:{index}", job.audio_codecs[track.stream_index]])
+        elif job.convert_audio:
 
             command.extend(
                 [
@@ -199,21 +231,11 @@ class Converter:
                     is job.default_audio_track
                 ):
 
-                    command.extend(
-                        [
-                            f"-disposition:a:{index}",
-                            "default",
-                        ]
-                    )
+                    command.extend([f"-disposition:a:{index}", "default+forced" if track.forced else "default"])
 
                 else:
 
-                    command.extend(
-                        [
-                            f"-disposition:a:{index}",
-                            "0",
-                        ]
-                    )
+                    command.extend([f"-disposition:a:{index}", "forced" if getattr(track, "forced", False) else "0"])
 
         return command
 
@@ -243,7 +265,12 @@ class Converter:
                 ]
             )
 
-        if job.target_container.lower() == "mp4":
+        if job.subtitle_codecs is not None:
+            for index, track in enumerate(subtitle_tracks):
+                command.extend([f"-c:s:{index}", job.subtitle_codecs[track.stream_index]])
+                flags = [name for name in ("default", "forced") if getattr(track, name)]
+                command.extend([f"-disposition:s:{index}", "+".join(flags) or "0"])
+        elif job.target_container.lower() == "mp4":
 
             command.extend(
                 [
@@ -363,54 +390,83 @@ class Converter:
             monitor.append_log("")
             monitor.append_log("[STDERR]")
 
-        process = subprocess.Popen(
-            command,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            **self._subprocess_kwargs(),
-        )
-
-        print("10 - ffmpeg launched")
-
-        parser = FFmpegProgressParser()
-
-        if process.stderr is not None:
-
-            for line in process.stderr:
-
-                line = line.strip()
-
-                if not line:
-                    continue
-
-                if monitor is not None:
-                    monitor.append_log(line)
-
-                progress = parser.parse(line)
-
-                if (
-                    progress is not None
-                    and on_progress is not None
-                ):
-                    on_progress(progress)
-
-        return_code = process.wait()
-
-        print(
-            f"11 - return code = {return_code}"
-        )
-
-        if monitor is not None:
-
-            monitor.append_log("")
-            monitor.append_log("-" * 80)
-            monitor.append_log(
-                f"Exit code: {return_code}"
+        if self.cancelled:
+            return -1
+        process = None
+        try:
+            process = subprocess.Popen(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                **self._subprocess_kwargs(),
             )
-            monitor.append_log("=" * 80)
 
-        return return_code
+            with self._process_lock:
+                self._process = process
+                if self.cancelled and process.poll() is None:
+                    try:
+                        process.terminate()
+                    except ProcessLookupError:
+                        pass
+
+            print("10 - ffmpeg launched")
+
+            parser = FFmpegProgressParser()
+
+            if process.stderr is not None:
+
+                for line in process.stderr:
+
+                    line = line.strip()
+
+                    if not line:
+                        continue
+
+                    if monitor is not None:
+                        monitor.append_log(line)
+
+                    progress = parser.parse(line)
+
+                    if (
+                        progress is not None
+                        and on_progress is not None
+                    ):
+                        on_progress(progress)
+
+            return_code = process.wait()
+
+            print(
+                f"11 - return code = {return_code}"
+            )
+
+            if monitor is not None:
+
+                monitor.append_log("")
+                monitor.append_log("-" * 80)
+                monitor.append_log(
+                    f"Exit code: {return_code}"
+                )
+                monitor.append_log("=" * 80)
+
+            return return_code
+        finally:
+            if process is not None:
+                try:
+                    if process.poll() is None:
+                        process.terminate()
+                        try:
+                            process.wait(timeout=2)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.wait()
+                finally:
+                    try:
+                        if process.stderr is not None and hasattr(process.stderr, "close"):
+                            process.stderr.close()
+                    finally:
+                        with self._process_lock:
+                            self._process = None

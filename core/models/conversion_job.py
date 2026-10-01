@@ -42,3 +42,11 @@ class ConversionJob:
 
     # False preserves all-video verification for byte-for-byte copy jobs.
     single_main_video: bool = False
+
+    # Per-source-stream codec decisions; None retains older aggregate jobs.
+    audio_codecs: dict[int, str] | None = None
+    subtitle_codecs: dict[int, str] | None = None
+    verify_composition: bool = False
+
+    # Encoder-specific arguments resolved by ConversionJobBuilder.
+    video_encoder_options: tuple[str, ...] = ()
